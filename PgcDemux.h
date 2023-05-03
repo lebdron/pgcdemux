@@ -4,16 +4,21 @@
 #if !defined(AFX_PGCDEMUX_H__968EF9BC_A37B_4FE7_AABB_A6296A6D41E4__INCLUDED_)
 #define AFX_PGCDEMUX_H__968EF9BC_A37B_4FE7_AABB_A6296A6D41E4__INCLUDED_
 
-#if _MSC_VER > 1000
-#pragma once
-#endif // _MSC_VER > 1000
+#include <string>
+#include <vector>
+#include <stdint.h>
 
-#ifndef __AFXWIN_H__
-	#error include 'stdafx.h' before including this file for PCH
-#endif
+#ifndef _WIN32
+typedef uint32_t DWORD;
+typedef bool BOOL;
+typedef int64_t __int64;
+#define TRUE true
+#define FALSE false
+#define _stati64 stat64
+#else /* _WIN32 */
+#include <windows.h>
+#endif /* _WIN32 */
 
-#include "resource.h"		// main symbols
-#include <afxtempl.h>		// Needed for CArrays
 
 #define PGCDEMUX_VERSION "1.2.0.5"
 #define MAXLENGTH  20*1024*1024
@@ -60,7 +65,7 @@ typedef struct ADT_VID_LIST
 // See PgcDemux.cpp for the implementation of this class
 //
 
-class CPgcDemuxApp : public CWinApp
+class CPgcDemuxApp
 {
 public:
 	CPgcDemuxApp();
@@ -87,9 +92,9 @@ public:
 	BOOL	m_bCheckCellt;
 	BOOL	m_bCheckEndTime;
 
-	CString	m_csInputIFO;
-	CString	m_csInputPath;
-	CString	m_csOutputPath;
+        std::string	m_csInputIFO;
+	std::string	m_csInputPath;
+	std::string	m_csOutputPath;
 	int		m_nPGCs;
 	int		m_iIFOlen;
 	int		m_nSelPGC;
@@ -106,10 +111,10 @@ public:
 	bool	bNewCell;
 	int		m_nLastVid,m_nLastCid;
 
-	CArray<ADT_CELL_LIST,ADT_CELL_LIST> m_AADT_Cell_list; 
-	CArray<ADT_CELL_LIST,ADT_CELL_LIST> m_MADT_Cell_list; 
-	CArray<ADT_VID_LIST,ADT_VID_LIST>	m_AADT_Vid_list;
-	CArray<ADT_VID_LIST,ADT_VID_LIST>	m_MADT_Vid_list;
+        std::vector<ADT_CELL_LIST> m_AADT_Cell_list; 
+        std::vector<ADT_CELL_LIST> m_MADT_Cell_list; 
+        std::vector<ADT_VID_LIST>	m_AADT_Vid_list;
+        std::vector<ADT_VID_LIST>	m_MADT_Vid_list;
 
 	int		m_iVTS_PTT_SRPT,m_iVTS_PGCI,m_iVTS_C_ADT; 
     int		m_iVTS_VOBU_ADMAP,m_iVTS_TMAPTI;
@@ -130,7 +135,7 @@ public:
 
 	FILE	*fsub[32],*faud[8],*fvid, *fvob;
 	int		m_audfmt[8];
-	CString	m_csAudname[8];
+	std::string	m_csAudname[8];
 	int		m_iFirstSubPTS[32],m_iFirstAudPTS[8],m_iFirstVidPTS,m_iFirstNavPTS0;
 	int		m_iAudIndex[8];
 	int		m_iSubPTS,m_iAudPTS,m_iVidPTS,m_iNavPTS0_old, m_iNavPTS0, m_iNavPTS1_old, m_iNavPTS1;
@@ -142,24 +147,20 @@ public:
 // Only in PCM
 	int		nbitspersample[8],nchannels[8],fsample[8];
 
-// Overrides
-	// ClassWizard generated virtual function overrides
-	//{{AFX_VIRTUAL(CPgcDemuxApp)
 public:
-	virtual BOOL InitInstance();
-	//}}AFX_VIRTUAL
+	virtual BOOL InitInstance(int argc, char *argv[]);
 
 
-	virtual void UpdateProgress( CWnd* pDlg, int nPerc);
+	virtual void UpdateProgress(int nPerc);
 	virtual int ExitInstance();
-	virtual BOOL ParseCommandLine();
+	virtual BOOL ParseCommandLine(int argc, char *argv[]);
 	virtual int ReadIFO();
-	virtual int PgcDemux (int nPGC, int nAng, CWnd* pDlg);
-	virtual int PgcMDemux(int nPGC,  CWnd* pDlg);
-	virtual int VIDDemux (int nVid,  CWnd* pDlg);
-	virtual int VIDMDemux(int nVid,  CWnd* pDlg);
-	virtual int CIDDemux (int nCell, CWnd* pDlg);
-	virtual int CIDMDemux(int nCell, CWnd* pDlg);
+	virtual int PgcDemux (int nPGC, int nAng);
+	virtual int PgcMDemux(int nPGC);
+	virtual int VIDDemux (int nVid);
+	virtual int VIDMDemux(int nVid);
+	virtual int CIDDemux (int nCell);
+	virtual int CIDMDemux(int nCell);
 	virtual void demuxvideo(uchar* buffer);
 	virtual void demuxaudio(uchar* buffer, int nBytesOffset);
 	virtual void demuxsubs(uchar* buffer);
@@ -179,19 +180,9 @@ public:
 
 
 
-// Implementation
-
-	//{{AFX_MSG(CPgcDemuxApp)
-		// NOTE - the ClassWizard will add and remove member functions here.
-		//    DO NOT EDIT what you see in these blocks of generated code !
-	//}}AFX_MSG
-	DECLARE_MESSAGE_MAP()
 };
 
 
 /////////////////////////////////////////////////////////////////////////////
-
-//{{AFX_INSERT_LOCATION}}
-// Microsoft Visual C++ will insert additional declarations immediately before the previous line.
 
 #endif // !defined(AFX_PGCDEMUX_H__968EF9BC_A37B_4FE7_AABB_A6296A6D41E4__INCLUDED_)

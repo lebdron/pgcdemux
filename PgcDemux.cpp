@@ -1,13 +1,17 @@
 // PgcDemux.cpp : Defines the class behaviors for the application.
 //
 
-#include "stdafx.h"
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <Winbase.h>
-#include "ToolTipDialog.h"
+#include <iostream>
+#include <algorithm>
+#include <cstdio>
+#include <sstream>
+#include <fstream>
+#include <iomanip>
 #include "PgcDemux.h"
-#include "PgcDemuxDlg.h"
+
+using namespace std;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -15,7 +19,6 @@
 static char THIS_FILE[] = __FILE__;
 #endif
 
-extern void MyErrorBox(LPCTSTR text);
 extern int readbuffer(uchar* buffer, FILE *in);
 extern void writebuffer(uchar* buffer, FILE *out, int nbytes);
 extern bool IsNav(uchar* buffer);
@@ -28,7 +31,7 @@ extern bool IsSubs (uchar* buffer);
 extern void ModifyCID (uchar* buffer, int VobId, int CellId);
 extern int GetNbytes(int nNumber,uchar* address);
 extern void Put4bytes(__int64 i64Number,uchar* address);
-extern void MyErrorBox(LPCTSTR text);
+extern void MyErrorBox(char const *text);
 extern void ModifyLBA (uchar* buffer, __int64 m_i64OutputLBA);
 extern int readpts(uchar *buf);
 extern int DurationInFrames(DWORD dwDuration);
@@ -67,14 +70,6 @@ inline uchar lo_nib(uchar ch)
 /////////////////////////////////////////////////////////////////////////////
 // CPgcDemuxApp
 
-BEGIN_MESSAGE_MAP(CPgcDemuxApp, CWinApp)
-	//{{AFX_MSG_MAP(CPgcDemuxApp)
-		// NOTE - the ClassWizard will add and remove mapping macros here.
-		//    DO NOT EDIT what you see in these blocks of generated code!
-	//}}AFX_MSG
-	ON_COMMAND(ID_HELP, CWinApp::OnHelp)
-END_MESSAGE_MAP()
-
 /////////////////////////////////////////////////////////////////////////////
 // CPgcDemuxApp construction
 
@@ -92,23 +87,9 @@ CPgcDemuxApp theApp;
 /////////////////////////////////////////////////////////////////////////////
 // CPgcDemuxApp initialization
 
-BOOL CPgcDemuxApp::InitInstance()
+BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 {
-	AfxEnableControlContainer();
-
-	// Standard initialization
-	// If you are not using these features and wish to reduce the size
-	//  of your final executable, you should remove from the following
-	//  the specific initialization routines you do not need.
-
-#ifdef _AFXDLL
-	Enable3dControls();			// Call this when using MFC in a shared DLL
-#else
-	Enable3dControlsStatic();	// Call this when linking to MFC statically
-#endif
-
-
-	int i,k;
+	unsigned i,k;
 	int nSelVid,nSelCid;
 
 	m_pIFO = NULL;
@@ -133,11 +114,11 @@ BOOL CPgcDemuxApp::InitInstance()
 	m_bCheckLBA=m_bCheckVideoPack=m_bCheckAudioPack=m_bCheckNavPack=m_bCheckSubPack=TRUE;
 
 
-	if ( __argc > 2 ) 
+	if ( argc > 2 ) 
 		// CLI mode
 	{
 		m_bCLI=true;
-		if (ParseCommandLine() ==TRUE)
+		if (ParseCommandLine(argc, argv) ==TRUE)
 		{
 			m_bInProcess=true;
 			m_iRet=ReadIFO();
@@ -147,9 +128,9 @@ BOOL CPgcDemuxApp::InitInstance()
 				{
 // Check if PGC exists in done in PgcDemux
 					if (m_iDomain==TITLES)
-						m_iRet=PgcDemux (m_nSelPGC,m_nSelAng, NULL);
+						m_iRet=PgcDemux (m_nSelPGC,m_nSelAng);
 					else
-						m_iRet=PgcMDemux(m_nSelPGC,NULL);
+						m_iRet=PgcMDemux(m_nSelPGC);
 				}
 				if (m_iMode==VIDMODE)
 				{
@@ -157,13 +138,13 @@ BOOL CPgcDemuxApp::InitInstance()
 					nSelVid=-1;
 					if (m_iDomain==TITLES)
 					{
-						for (k=0;k<m_AADT_Vid_list.GetSize() && nSelVid==-1; k++)
+						for (k=0;k<m_AADT_Vid_list.size() && nSelVid==-1; k++)
 							if (m_AADT_Vid_list[k].VID==m_nVid)
 								nSelVid=k;
 					}
 					else
 					{
-						for (k=0;k<m_MADT_Vid_list.GetSize() && nSelVid==-1; k++)
+						for (k=0;k<m_MADT_Vid_list.size() && nSelVid==-1; k++)
 							if (m_MADT_Vid_list[k].VID==m_nVid)
 								nSelVid=k;
 					}
@@ -175,9 +156,9 @@ BOOL CPgcDemuxApp::InitInstance()
 					if (m_iRet==0)
 					{
 						if (m_iDomain==TITLES)
-							m_iRet=VIDDemux(nSelVid, NULL);
+							m_iRet=VIDDemux(nSelVid);
 						else
-							m_iRet=VIDMDemux(nSelVid,NULL);
+							m_iRet=VIDMDemux(nSelVid);
 					}
 				}
 				if (m_iMode==CIDMODE)
@@ -186,13 +167,13 @@ BOOL CPgcDemuxApp::InitInstance()
 					nSelCid=-1;
 					if (m_iDomain==TITLES)
 					{
-						for (k=0;k<m_AADT_Cell_list.GetSize() && nSelCid==-1; k++)
+						for (k=0;k<m_AADT_Cell_list.size() && nSelCid==-1; k++)
 							if (m_AADT_Cell_list[k].VID==m_nVid && m_AADT_Cell_list[k].CID==m_nCid)
 								nSelCid=k;
 					}
 					else
 					{
-						for (k=0;k<m_MADT_Cell_list.GetSize() && nSelCid==-1; k++)
+						for (k=0;k<m_MADT_Cell_list.size() && nSelCid==-1; k++)
 							if (m_MADT_Cell_list[k].VID==m_nVid && m_MADT_Cell_list[k].CID==m_nCid)
 								nSelCid=k;
 					}
@@ -204,9 +185,9 @@ BOOL CPgcDemuxApp::InitInstance()
 					if (m_iRet==0)
 					{
 						if (m_iDomain==TITLES)
-							m_iRet=CIDDemux(nSelCid, NULL);
+							m_iRet=CIDDemux(nSelCid);
 						else
-							m_iRet=CIDMDemux(nSelCid,NULL);
+							m_iRet=CIDMDemux(nSelCid);
 					}
 				}
 
@@ -221,51 +202,47 @@ BOOL CPgcDemuxApp::InitInstance()
 		//  application, rather than start the application's message pump.
 		return FALSE;
 	}
-
-
-
-// Dlg mode	
-	CPgcDemuxDlg dlg;
-	m_pMainWnd = &dlg;
-	int nResponse = dlg.DoModal();
-	if (nResponse == IDOK)
-	{
-		// TODO: Place code here to handle when the dialog is
-		//  dismissed with OK
-	}
-	else if (nResponse == IDCANCEL)
-	{
-		// TODO: Place code here to handle when the dialog is
-		//  dismissed with Cancel
-	}
-
-	// Since the dialog has been closed, return FALSE so that we exit the
-	//  application, rather than start the application's message pump.
-	return FALSE;
+        else
+        {
+                MyErrorBox("Missing arguments!");
+                cout
+                        << "pgcdemux [option1] [option2] ... [option12] <ifo_input_file> <destination_folder>" << endl
+                        << "option1: [-pgc <pgcnumber>].      Selects the PGC number (from 1 to nPGCs). Default 1" << endl
+                        << "option2: [-ang <angnumber>].      Selects the Angle number (from 1 to n). Default 1" << endl
+                        << "option3: [-vid <vobid>].          Selects the vobid number (from 1 to n). Default 1" << endl
+                        << "option4: [-cid <vobid> <cellid>]. Selects a vobid and cell (from 1 to n). Default 1" << endl
+                        << "option5: {-m2v, -nom2v}. Extracts/No extracts video file. Default NO" << endl
+                        << "option6: {-aud, -noaud}. Extracts/No extracts audio streams. Default YES" << endl
+                        << "option7: {-sub, -nosub}. Extracts/No extracts subs streams. Default YES" << endl
+                        << "option8: {-vob, -novob}. Generates a single PGC VOB. Default NO" << endl
+                        << "option9: {-customvob <flags>}. Generates a custom VOB file. Flags:" << endl
+                        << "          b: split VOB: one file per vob_id" << endl
+                        << "          n: write nav packs" << endl
+                        << "          v: write video packs" << endl
+                        << "          a: write audio packs" << endl
+                        << "          s: write subs packs" << endl
+                        << "          i: only first Iframe" << endl
+                        << "          l: patch LBA number" << endl
+                        << "option10:{-cellt, -nocellt}. Generates a Celltimes.txt file. Default YES" << endl
+                        << "option10:{-endt, -noendt}. Includes Last end time in Celltimes.txt. Default NO" << endl
+                        << "option11:{-log, -nolog}. Generates a log file. Default YES" << endl
+                        << "option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.IFO)" << endl;
+                m_iRet=-1;
+                return FALSE;
+        }
 }
 
-void CPgcDemuxApp::UpdateProgress( CWnd* pDlg, int nPerc)
+void CPgcDemuxApp::UpdateProgress(int nPerc)
 {
-	MSG msg;
-	static int oldPerc=-1;
-
-	if ( pDlg )
-	{
-		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-		if (oldPerc!=nPerc) 
-		{
-			oldPerc=nPerc;
-			((CPgcDemuxDlg *)pDlg)->UpdateProgress(nPerc);
-		}
-	}
+    int w = (nPerc * 40 + 50) / 100;
+    string meter(w, '#');
+    string spacer(40 - w, '.');
+    cout << "[" << meter << spacer << "] " << nPerc << "%\r";
+    cout.flush();
 }
 
 
-BOOL CPgcDemuxApp::ParseCommandLine()
+BOOL CPgcDemuxApp::ParseCommandLine(int argc, char *argv[])
 {
 /*
 PgcDemux [option1] [option2] ... [option12] <ifo_input_file> <destination_folder>
@@ -291,12 +268,9 @@ option11:{-log, -nolog}. Generates a log file. Default YES
 option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.IFO)
 */
 	int i;
-	CString csPar,csPar2;
-	BOOL bRet;
-	CString csAux,csAux1,csAux2;
+	string csPar,csPar2;
+	string csAux,csAux1,csAux2;
 
-
-	bRet=TRUE;
 
 //	m_bCheckAud=m_bCheckSub=m_bCheckLog=m_bCheckCellt=TRUE;
 //	m_bCheckVid=m_bCheckVob=m_bCheckVob2=m_bCheckEndTime=FALSE;
@@ -309,16 +283,16 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 	m_iMode=PGCMODE;
 	m_iDomain=TITLES;
 
-	if (__argc < 3) return -1;
+	if (argc < 3) return -1;
 	
-	for (i =1 ; i<(__argc)-1 ; i++)
+	for (i =1 ; i<(argc)-1 ; i++)
 	{
-		csPar.Format(_T("%s"),(__argv[i]));
-		csPar.MakeLower();
+		csPar=argv[i];
+                transform(csPar.begin(), csPar.end(), csPar.begin(), ::tolower);
 
-		if ( csPar=="-pgc" && __argc >i+1 )	
+		if ( csPar=="-pgc" && argc >i+1 )	
 		{
-			sscanf ( __argv[i+1], "%d", &m_nSelPGC);
+			sscanf ( argv[i+1], "%d", &m_nSelPGC);
 			if (m_nSelPGC <1 || m_nSelPGC >255)
 			{
 				MyErrorBox( "Invalid pgc number!");
@@ -328,9 +302,9 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			i++;
 			m_nSelPGC--; // internally from 0 to nPGCs-1.
 		}
-		else if ( csPar=="-ang" && __argc >i+1 )	
+		else if ( csPar=="-ang" && argc >i+1 )	
 		{
-			sscanf ( __argv[i+1], "%d", &m_nSelAng);
+			sscanf ( argv[i+1], "%d", &m_nSelAng);
 			if (m_nSelAng <1 || m_nSelAng >9)
 			{
 				MyErrorBox( "Invalid angle number!");
@@ -339,9 +313,9 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			i++;
 			m_nSelAng--; // internally from 0 to nAngs-1.
 		}
-		else if ( csPar=="-vid" && __argc >i+1 )	
+		else if ( csPar=="-vid" && argc >i+1 )	
 		{
-			sscanf ( __argv[i+1], "%d", &m_nVid);
+			sscanf ( argv[i+1], "%d", &m_nVid);
 			if (m_nVid <1 || m_nVid >32768)
 			{
 				MyErrorBox( "Invalid Vid number!");
@@ -350,10 +324,10 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			m_iMode=VIDMODE;
 			i++;
 		}
-		else if ( csPar=="-cid" && __argc >i+2 )	
+		else if ( csPar=="-cid" && argc >i+2 )	
 		{
-			sscanf ( __argv[i+1], "%d", &m_nVid);
-			sscanf ( __argv[i+2], "%d", &m_nCid);
+			sscanf ( argv[i+1], "%d", &m_nVid);
+			sscanf ( argv[i+2], "%d", &m_nCid);
 			if (m_nVid <1 || m_nVid >32768)
 			{
 				MyErrorBox( "Invalid Vid number!");
@@ -368,10 +342,10 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			m_iMode=CIDMODE;
 			i+=2;
 		}
-		else if ( csPar=="-customvob" && __argc >i+1 )	
+		else if ( csPar=="-customvob" && argc >i+1 )	
 		{
-			csPar2.Format(_T("%s"),(__argv[i+1]));
-			csPar2.MakeLower();
+			csPar2 = argv[i+1];
+                        transform(csPar2.begin(), csPar2.end(), csPar2.begin(), ::tolower);
 
 			m_bCheckVob=TRUE;
 // n: write nav packs
@@ -382,19 +356,19 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 // b: split file per vob_id
 // l: Patch LBA number
 
-			if (csPar2.Find('b')!=-1)  m_bCheckVob2=TRUE;
+			if (csPar2.find('b')!=string::npos)  m_bCheckVob2=TRUE;
 			else m_bCheckVob2=FALSE;
-			if (csPar2.Find('v')!=-1)  m_bCheckVideoPack=TRUE;
+			if (csPar2.find('v')!=string::npos)  m_bCheckVideoPack=TRUE;
 			else m_bCheckVideoPack=FALSE;
-			if (csPar2.Find('a')!=-1)  m_bCheckAudioPack=TRUE;
+			if (csPar2.find('a')!=string::npos)  m_bCheckAudioPack=TRUE;
 			else m_bCheckAudioPack=FALSE;
-			if (csPar2.Find('n')!=-1)  m_bCheckNavPack=TRUE;
+			if (csPar2.find('n')!=string::npos)  m_bCheckNavPack=TRUE;
 			else m_bCheckNavPack=FALSE;
-			if (csPar2.Find('s')!=-1)  m_bCheckSubPack=TRUE;
+			if (csPar2.find('s')!=string::npos)  m_bCheckSubPack=TRUE;
 			else m_bCheckSubPack=FALSE;
-			if (csPar2.Find('i')!=-1)  m_bCheckIFrame=TRUE;
+			if (csPar2.find('i')!=string::npos)  m_bCheckIFrame=TRUE;
 			else m_bCheckIFrame=FALSE;
-			if (csPar2.Find('l')!=-1)  m_bCheckLBA=TRUE;
+			if (csPar2.find('l')!=string::npos)  m_bCheckLBA=TRUE;
 			else m_bCheckLBA=FALSE;
 			i++;
 		}
@@ -415,19 +389,15 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 		else if ( csPar=="-menu" )	m_iDomain=MENUS;   
 		else if ( csPar=="-title" )  m_iDomain=TITLES;   
 	}
-	m_csInputIFO=__argv[(__argc) -2];
-	m_csOutputPath=__argv[(__argc) -1];
+	m_csInputIFO=argv[(argc) -2];
+	m_csOutputPath=argv[(argc) -1];
 
-	m_csInputPath=m_csInputIFO.Left(m_csInputIFO.ReverseFind('\\'));
+	m_csInputPath=m_csInputIFO.substr(0, m_csInputIFO.find_last_of("/\\"));
 
-	m_csInputIFO.MakeUpper();
-	m_csOutputPath.MakeUpper();
-	m_csInputPath.MakeUpper();
-
-	csAux=m_csInputIFO.Right(m_csInputIFO.GetLength()-m_csInputIFO.ReverseFind('\\')-1);
-	csAux1=csAux.Left(4);
-	csAux=m_csInputIFO.Right(6);
-	csAux2=m_csInputIFO.Right(12);
+	csAux2=m_csInputIFO.substr(m_csInputIFO.find_last_of("/\\") + 1);
+        transform(csAux2.begin(), csAux2.end(), csAux2.begin(), ::toupper);
+	csAux1=csAux2.substr(0, 4);
+	csAux=csAux2.substr(csAux2.size() - 6);
 	if ( (csAux!="_0.IFO" || csAux1 != "VTS_" ) && csAux2 !="VIDEO_TS.IFO")
 	{
 		MyErrorBox( "Invalid input file!");
@@ -449,17 +419,11 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 // Exit Value
 int CPgcDemuxApp::ExitInstance()
 {
-	int ret;
-	
 	if (m_pIFO!=NULL)  delete[]  m_pIFO;
 
-	ret= CWinApp::ExitInstance();
+        cout << endl;
 
-    
-	if (__argc == 1)
-		return ret;
-	else
-		return m_iRet;
+	return m_iRet;
 
 }
 
@@ -475,7 +439,7 @@ int CPgcDemuxApp::InsertCell (ADT_CELL_LIST myADT_Cell, int iDomain)
 
 	if (iDomain==TITLES)
 	{
-		iArraysize=m_AADT_Cell_list.GetSize();
+		iArraysize=m_AADT_Cell_list.size();
 		ii=iArraysize;
 		for (i=0,bIsHigher=true; i<iArraysize && bIsHigher ; i++)
 		{
@@ -488,11 +452,11 @@ int CPgcDemuxApp::InsertCell (ADT_CELL_LIST myADT_Cell, int iDomain)
 			}
 
 		}
-		m_AADT_Cell_list.InsertAt(ii,myADT_Cell);
+		m_AADT_Cell_list.insert(m_AADT_Cell_list.begin() + ii, myADT_Cell);
 	}
 	if (iDomain==MENUS)
 	{
-		iArraysize=m_MADT_Cell_list.GetSize();
+		iArraysize=m_MADT_Cell_list.size();
 		ii=iArraysize;
 		for (i=0,bIsHigher=true; i<iArraysize && bIsHigher ; i++)
 		{
@@ -506,7 +470,7 @@ int CPgcDemuxApp::InsertCell (ADT_CELL_LIST myADT_Cell, int iDomain)
 
 		}
 //		if (i>0 && bIsHigher) i--;
-		m_MADT_Cell_list.InsertAt(ii,myADT_Cell);
+		m_MADT_Cell_list.insert(m_MADT_Cell_list.begin() + ii, myADT_Cell);
 	}
 	return ii;
 }
@@ -520,7 +484,7 @@ void CPgcDemuxApp::FillDurations()
 	int iVideoAttr, iFormat; 
 
 
-	iArraysize=m_AADT_Cell_list.GetSize();
+	iArraysize=m_AADT_Cell_list.size();
 
 	for (i=0; i<iArraysize; i++)
 	{
@@ -550,7 +514,7 @@ void CPgcDemuxApp::FillDurations()
 		}
 	}
 
-	iArraysize=m_MADT_Cell_list.GetSize();
+	iArraysize=m_MADT_Cell_list.size();
 
 	for (i=0; i<iArraysize; i++)
 	{
@@ -587,8 +551,10 @@ void CPgcDemuxApp::FillDurations()
 ////////////////////////////////////////////////////////////////////////////////
 int CPgcDemuxApp::ReadIFO()
 {
-	CString csAux,csAux2;
-	int i,j,k,kk,nCell,nVIDs;
+        stringstream csAux;
+	string csAux2;
+	int i,j,k,kk,nCell;
+        unsigned nVIDs;
 	ADT_CELL_LIST myADT_Cell;
 	ADT_VID_LIST myADT_Vid;
 	int nTotADT, nADT, VidADT,CidADT;
@@ -597,25 +563,27 @@ int CPgcDemuxApp::ReadIFO()
 	FILE * in;
 	int iIniSec,iEndSec;
 	struct  _stati64 statbuf;
-	int iSize,iCat;
+	int iCat;
 	int iIFOSize;
 
 
-	if (_stati64 ( m_csInputIFO, &statbuf)==0)
+	if (_stati64 ( m_csInputIFO.c_str(), &statbuf)==0)
 		iIFOSize= (int) statbuf.st_size;
 	
 	if ( iIFOSize > MAXLENGTH)
 	{
-		csAux.Format(_T("IFO too big %s"),m_csInputIFO);
-		MyErrorBox (csAux);
+		csAux.str("");
+                csAux << "IFO too big " << m_csInputIFO;
+		MyErrorBox (csAux.str().c_str());
 		return -1;
 	}
 
-	in=fopen(m_csInputIFO,"rb");
+	in=fopen(m_csInputIFO.c_str(),"rb");
 	if (in == NULL)
 	{
-		csAux.Format(_T("Unable to open %s"),m_csInputIFO);
-		MyErrorBox (csAux);
+		csAux.str("");
+		csAux << "Unable to open " << m_csInputIFO;
+		MyErrorBox (csAux.str().c_str());
 		return -1;
 	}
 
@@ -631,10 +599,10 @@ int CPgcDemuxApp::ReadIFO()
 	m_iIFOlen=i-1;
 	fclose (in);
 
-	m_AADT_Cell_list.RemoveAll();
-	m_MADT_Cell_list.RemoveAll();
-	m_AADT_Vid_list.RemoveAll();
-	m_MADT_Vid_list.RemoveAll();
+	m_AADT_Cell_list.clear();
+	m_MADT_Cell_list.clear();
+	m_AADT_Vid_list.clear();
+	m_MADT_Vid_list.clear();
 
 
 // Get Title Cells
@@ -669,8 +637,9 @@ int CPgcDemuxApp::ReadIFO()
 // Title PGCs	
 	if (m_nPGCs > MAX_PGC)
 	{
-		csAux.Format(_T("ERROR: Max PGCs limit (%d) has been reached."),MAX_PGC);
-		MyErrorBox (csAux);
+		csAux.str("");
+		csAux << "ERROR: Max PGCs limit (" << MAX_PGC << ") has been reached.";
+		MyErrorBox (csAux.str().c_str());
 		return -1;
 	}
 	for (k=0; k<m_nPGCs;k++)
@@ -716,8 +685,9 @@ int CPgcDemuxApp::ReadIFO()
 	m_nMPGCs=0;
 	if (m_nLUs > MAX_LU)
 	{
-		csAux.Format(_T("ERROR: Max LUs limit (%d) has been reached."),MAX_LU);
-		MyErrorBox (csAux);
+                csAux.str("");
+		csAux << "ERROR: Max LUs limit (" << MAX_LU << ") has been reached.";
+		MyErrorBox (csAux.str().c_str());
 		return -1;
 	}
 
@@ -731,8 +701,9 @@ int CPgcDemuxApp::ReadIFO()
 		{
 			if ((m_nMPGCs + m_nPGCinLU[nLU]) > MAX_MPGC)
 			{
-				csAux.Format(_T("ERROR: Max MPGCs limit (%d) has been reached."),MAX_MPGC);
-				MyErrorBox (csAux);
+                                csAux.str("");
+				csAux << "ERROR: Max MPGCs limit (" << MAX_MPGC << ") has been reached.";
+				MyErrorBox (csAux.str().c_str());
 				return -1;
 			}
 			nAbsPGC=j+m_nMPGCs;
@@ -750,8 +721,9 @@ int CPgcDemuxApp::ReadIFO()
 // There is something wrong...
 			{
 				m_nMCells[nAbsPGC]=0;
-				csAux.Format(_T("ERROR: There is something wrong in number of cells in LU %02d, Menu PGC %02d."),nLU, j);
-				MyErrorBox (csAux);
+                                csAux.str("");
+				csAux << "ERROR: There is something wrong in number of cells in LU " << nLU << ", Menu PGC " << j << ".";
+				MyErrorBox (csAux.str().c_str());
 				return -1;
 			}
 			m_dwMDuration[nAbsPGC]=(DWORD)GetNbytes(4,&m_pIFO[m_iMENU_PGC[nAbsPGC]+4]);
@@ -775,7 +747,7 @@ int CPgcDemuxApp::ReadIFO()
 		VidADT=GetNbytes(2,&m_pIFO[m_iVTS_C_ADT+8+12*nADT]);
 		CidADT=m_pIFO[m_iVTS_C_ADT+8+12*nADT+2];
 
-		iArraysize=m_AADT_Cell_list.GetSize();
+		iArraysize=m_AADT_Cell_list.size();
 		for (k=0,bAlready=false; k< iArraysize ;k++)
 		{
 			if (CidADT==m_AADT_Cell_list[k].CID &&
@@ -800,7 +772,6 @@ int CPgcDemuxApp::ReadIFO()
 		iEndSec=GetNbytes(4,&m_pIFO[m_iVTS_C_ADT+8+12*nADT+8]);
 		if (iIniSec < m_AADT_Cell_list[kk].iIniSec) m_AADT_Cell_list[kk].iIniSec=iIniSec;
 		if (iEndSec > m_AADT_Cell_list[kk].iEndSec) m_AADT_Cell_list[kk].iEndSec=iEndSec;
-		iSize=(iEndSec-iIniSec+1);
 		m_AADT_Cell_list[kk].iSize+=(iEndSec-iIniSec+1);
 	}
 
@@ -818,7 +789,7 @@ int CPgcDemuxApp::ReadIFO()
 		VidADT=GetNbytes(2,&m_pIFO[m_iVTSM_C_ADT+8+12*nADT]);
 		CidADT=m_pIFO[m_iVTSM_C_ADT+8+12*nADT+2];
 
-		iArraysize=m_MADT_Cell_list.GetSize();
+		iArraysize=m_MADT_Cell_list.size();
 		for (k=0,bAlready=false; k< iArraysize ;k++)
 		{
 			if (CidADT==m_MADT_Cell_list[k].CID &&
@@ -843,7 +814,6 @@ int CPgcDemuxApp::ReadIFO()
 		iEndSec=GetNbytes(4,&m_pIFO[m_iVTSM_C_ADT+8+12*nADT+8]);
 		if (iIniSec < m_MADT_Cell_list[kk].iIniSec) m_MADT_Cell_list[kk].iIniSec=iIniSec;
 		if (iEndSec > m_MADT_Cell_list[kk].iEndSec) m_MADT_Cell_list[kk].iEndSec=iEndSec;
-		iSize=(iEndSec-iIniSec+1);
 		m_MADT_Cell_list[kk].iSize+=(iEndSec-iIniSec+1);
 	}
 
@@ -852,13 +822,13 @@ int CPgcDemuxApp::ReadIFO()
 //////////////////////////////////////////////////////////////	
 /////////////   VIDs
 // VIDs in Titles
-	iArraysize=m_AADT_Cell_list.GetSize();
+	iArraysize=m_AADT_Cell_list.size();
 	for (i=0; i <iArraysize; i++)
 	{
 		VidADT=m_AADT_Cell_list[i].VID;
 
-		nVIDs=m_AADT_Vid_list.GetSize();
-		for (k=0,bAlready=false; k< nVIDs ;k++)
+		nVIDs=m_AADT_Vid_list.size();
+		for (k=0,bAlready=false; k< int(nVIDs) ;k++)
 		{
 			if (VidADT==m_AADT_Vid_list[k].VID )
 			{
@@ -872,7 +842,10 @@ int CPgcDemuxApp::ReadIFO()
 			myADT_Vid.iSize=0;
 			myADT_Vid.nCells=0;
 			myADT_Vid.dwDuration=0;
-			m_AADT_Vid_list.SetAtGrow(nVIDs,myADT_Vid);
+                        if(nVIDs < m_AADT_Vid_list.size())
+                                m_AADT_Vid_list.at(nVIDs) = myADT_Vid;
+                        else
+                                m_AADT_Vid_list.insert(m_AADT_Vid_list.begin() + nVIDs, myADT_Vid);
 			kk=nVIDs;
 		}
 		m_AADT_Vid_list[kk].iSize+=m_AADT_Cell_list[i].iSize;
@@ -881,13 +854,13 @@ int CPgcDemuxApp::ReadIFO()
 	}
 	
 // VIDs in Menus
-	iArraysize=m_MADT_Cell_list.GetSize();
+	iArraysize=m_MADT_Cell_list.size();
 	for (i=0; i <iArraysize; i++)
 	{
 		VidADT=m_MADT_Cell_list[i].VID;
 
-		nVIDs=m_MADT_Vid_list.GetSize();
-		for (k=0,bAlready=false; k< nVIDs ;k++)
+		nVIDs=m_MADT_Vid_list.size();
+		for (k=0,bAlready=false; k< int(nVIDs) ;k++)
 		{
 			if (VidADT==m_MADT_Vid_list[k].VID )
 			{
@@ -901,7 +874,10 @@ int CPgcDemuxApp::ReadIFO()
 			myADT_Vid.iSize=0;
 			myADT_Vid.nCells=0;
 			myADT_Vid.dwDuration=0;
-			m_MADT_Vid_list.SetAtGrow(nVIDs,myADT_Vid);
+                        if(nVIDs < m_MADT_Vid_list.size())
+                                m_MADT_Vid_list.at(nVIDs) = myADT_Vid;
+                        else
+                                m_MADT_Vid_list.insert(m_MADT_Vid_list.begin() + nVIDs, myADT_Vid);
 			kk=nVIDs;
 		}
 		m_MADT_Vid_list[kk].iSize+=m_MADT_Cell_list[i].iSize;
@@ -917,19 +893,20 @@ int CPgcDemuxApp::ReadIFO()
 		for (k=0; k<10; k++)
 			m_i64VOBSize[k]=0;
 
-		csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-3);
-		csAux=csAux2+"VOB";
-		if (_stati64 ( csAux, &statbuf)==0)
+		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
+                csAux.str("");
+		csAux << csAux2 << "VOB";
+		if (_stati64 ( csAux.str().c_str(), &statbuf)==0)
 			m_i64VOBSize[0]= statbuf.st_size;
 	}
 	else
 	{
 		for (k=0; k<10; k++)
 		{
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-			csAux.Format(_T("%d.VOB"), k);
-			csAux=csAux2+csAux;
-			if (_stati64 ( csAux, &statbuf)==0)
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                        csAux.str("");
+			csAux << csAux2 << k << ".VOB";
+			if (_stati64 ( csAux.str().c_str(), &statbuf)==0)
 			{
 				m_i64VOBSize[k]= statbuf.st_size;
 				m_nVobFiles=k;
@@ -1140,11 +1117,13 @@ int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 {
 	int VID,CID;
-	int k,nCell;
+	unsigned k;
+        int nCell;
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
-	CString csAux,csAux2;
+        stringstream csAux;
+	string csAux2;
 	FILE *in;
 	__int64 i64;
 	bool bMyCell;
@@ -1156,7 +1135,7 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 	{
 		if (nSelection >= m_nPGCs)
 		{
-			MyErrorBox("Error: PGC does not exist");
+			MyErrorBox("Error: GetAudioDelay: PGC does not exist");
 			return -1;
 		}
 		nCell=0;
@@ -1165,14 +1144,14 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 	}
 	else if (iMode==VIDMODE)
 	{
-		if (nSelection >= m_AADT_Vid_list.GetSize())
+		if (nSelection >= int(m_AADT_Vid_list.size()))
 		{
 			MyErrorBox("Error: VID does not exist");
 			return -1;
 		}
 		VID=m_AADT_Vid_list[nSelection].VID;
 		CID=-1;
-		for (k=0;k<m_AADT_Cell_list.GetSize() && CID==-1; k++)
+		for (k=0;k<m_AADT_Cell_list.size() && CID==-1; k++)
 		{
 			if (VID==m_AADT_Cell_list[k].VID)
 				CID=m_AADT_Cell_list[k].CID;
@@ -1181,7 +1160,7 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 	}
 	else if (iMode==CIDMODE)
 	{
-		if (nSelection >= m_AADT_Cell_list.GetSize())
+		if (nSelection >= int(m_AADT_Cell_list.size()))
 		{
 			MyErrorBox("Error: CID does not exist");
 			return -1;
@@ -1190,7 +1169,7 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 		CID=m_AADT_Cell_list[nSelection].CID;
 	}
 
-	for (k=0,nCell=-1; k < m_AADT_Cell_list.GetSize() && nCell==-1; k++)
+	for (k=0,nCell=-1; k < m_AADT_Cell_list.size() && nCell==-1; k++)
 	{
 		if (VID==m_AADT_Cell_list[k].VID &&	
 			CID==m_AADT_Cell_list[k].CID)
@@ -1219,13 +1198,13 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 			k=20;
 		}
 	}
-	csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-	csAux.Format(_T("%d.VOB"), nVobin);
-	csAux=csAux2+csAux;
-	in=fopen(csAux,"rb");
+	csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+        csAux.str("");
+        csAux << csAux2 << nVobin << ".VOB";
+	in=fopen(csAux.str().c_str(),"rb");
 	if (in ==NULL)
 	{
-		MyErrorBox("Error opening input VOB: "+csAux);
+		MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
 		iRet=-1;
 	}
 	if (iRet==0) fseek(in, (long) ((i64IniSec-i64sectors)*2048), SEEK_SET);
@@ -1237,10 +1216,10 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 		{
 			if (in!=NULL) fclose (in);
 			nVobin++;
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-			csAux.Format(_T("%d.VOB"), nVobin);
-			csAux=csAux2+csAux;
-			in=fopen(csAux,"rb");
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                        csAux.str("");
+                        csAux << csAux2 << nVobin << ".VOB";
+			in = fopen(csAux.str().c_str(), "rb");
 			if (readbuffer(m_buffer,in)!=2048)
 			{
 				MyErrorBox("Input error: Reached end of VOB too early");
@@ -1281,9 +1260,10 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 {
 	int VID,CID;
-	int k,nCell;
+	unsigned k;
+        int nCell;
 	__int64 i64IniSec,i64EndSec;
-	CString csAux,csAux2;
+	string csAux,csAux2;
 	FILE *in;
 	__int64 i64;
 	bool bMyCell;
@@ -1295,7 +1275,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 	{
 		if (nSelection >= m_nMPGCs)
 		{
-			MyErrorBox("Error: PGC does not exist");
+			MyErrorBox("Error: GetMAudioDelay: PGC does not exist");
 			return -1;
 		}
 		nCell=0;
@@ -1304,14 +1284,14 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 	}
 	else if (iMode==VIDMODE)
 	{
-		if (nSelection >= m_MADT_Vid_list.GetSize())
+		if (nSelection >= int(m_MADT_Vid_list.size()))
 		{
 			MyErrorBox("Error: VID does not exist");
 			return -1;
 		}
 		VID=m_MADT_Vid_list[nSelection].VID;
 		CID=-1;
-		for (k=0;k<m_MADT_Cell_list.GetSize() && CID==-1; k++)
+		for (k=0;k<m_MADT_Cell_list.size() && CID==-1; k++)
 		{
 			if (VID==m_MADT_Cell_list[k].VID)
 				CID=m_MADT_Cell_list[k].CID;
@@ -1320,7 +1300,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 	}
 	else if (iMode==CIDMODE)
 	{
-		if (nSelection >= m_MADT_Cell_list.GetSize())
+		if (nSelection >= int(m_MADT_Cell_list.size()))
 		{
 			MyErrorBox("Error: CID does not exist");
 			return -1;
@@ -1329,7 +1309,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 		CID=m_MADT_Cell_list[nSelection].CID;
 	}
 
-	for (k=0,nCell=-1; k < m_MADT_Cell_list.GetSize() && nCell==-1; k++)
+	for (k=0,nCell=-1; k < m_MADT_Cell_list.size() && nCell==-1; k++)
 	{
 		if (VID==m_MADT_Cell_list[k].VID &&	
 			CID==m_MADT_Cell_list[k].CID)
@@ -1351,18 +1331,18 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 
 	if (m_bVMGM)
 	{
-		csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-3);
+		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
 		csAux=csAux2+"VOB";
 	}
 	else
 	{
-		csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
+		csAux2 = m_csInputIFO.substr(m_csInputIFO.size() - 5);
 		csAux=csAux2+"0.VOB";
 	}
-	in=fopen(csAux,"rb");
+	in = fopen(csAux.c_str(), "rb");
 	if (in ==NULL)
 	{
-		MyErrorBox("Error opening input VOB: "+csAux);
+		MyErrorBox(("Error opening input VOB: " + csAux).c_str());
 		iRet=-1;
 	}
 	if (iRet==0) fseek(in, (long) ((i64IniSec)*2048), SEEK_SET);
@@ -1411,7 +1391,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 void CPgcDemuxApp::IniDemuxGlobalVars()
 {
 	int k;
-	CString csAux;
+	string csAux;
 
 	// clear PTS
 	for (k=0;k<32;k++)
@@ -1431,7 +1411,7 @@ void CPgcDemuxApp::IniDemuxGlobalVars()
 	m_nNavPacks=m_nVidPacks=m_nAudPacks=m_nSubPacks=m_nUnkPacks=m_nPadPacks=0;
 	m_i64OutputLBA=0;
 	m_nVobout=m_nVidout=m_nCidout=0;
-	m_nLastVid,m_nLastCid=0;
+	m_nLastVid=m_nLastCid=0;
 
 	m_nCurrVid=0;
 	m_iOffsetPTS=0;
@@ -1440,12 +1420,12 @@ void CPgcDemuxApp::IniDemuxGlobalVars()
 
 int CPgcDemuxApp::OpenVideoFile()
 {
-	CString csAux;
+	string csAux;
 
 	if (m_bCheckVid)
 	{
-		csAux=m_csOutputPath+ '\\' + "VideoFile.m2v";
-		fvid=fopen(csAux,"wb");
+		csAux=m_csOutputPath+ '/' + "VideoFile.m2v";
+		fvid = fopen(csAux.c_str(), "wb");
 		if (fvid==NULL) return -1;
 	}
 
@@ -1453,7 +1433,7 @@ int CPgcDemuxApp::OpenVideoFile()
 }
 
 
-int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
+int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 {
 	int nTotalSectors;
 	int nSector,nCell;
@@ -1462,7 +1442,8 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
-	CString csAux,csAux2;
+        stringstream csAux;
+	string csAux2;
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
@@ -1473,7 +1454,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 
 	if (nPGC >= theApp.m_nPGCs)
 	{
-		MyErrorBox("Error: PGC does not exist");
+		MyErrorBox("Error: PgcDemux: PGC does not exist");
 		m_bInProcess=false;
 		return -1;
 	}
@@ -1484,7 +1465,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 
 // Calculate  the total number of sectors
 	nTotalSectors=0;
-	iArraysize=m_AADT_Cell_list.GetSize();
+	iArraysize=m_AADT_Cell_list.size();
 	for (nCell=nCurrAngle=0; nCell<m_nCells[nPGC]; nCell++)
 	{
 		VID=GetNbytes(2,&m_pIFO[m_C_POST[nPGC]+4*nCell]);
@@ -1540,13 +1521,13 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 					k=20;
 				}
 			}
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-			csAux.Format(_T("%d.VOB"), nVobin);
-			csAux=csAux2+csAux;
-			in=fopen(csAux,"rb");
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                        csAux.str("");
+                        csAux << csAux2 << nVobin << ".VOB";
+			in = fopen(csAux.str().c_str(), "rb");
 			if (in ==NULL)
 			{
-				MyErrorBox("Error opening input VOB: "+csAux);
+				MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
 				m_bInProcess=false;
 				iRet=-1;
 			}
@@ -1555,15 +1536,15 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 			for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 			{
 			//readpack
-				if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+				if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 				if (readbuffer(m_buffer,in)!=2048)
 				{
 					if (in!=NULL) fclose (in);
 					nVobin++;
-					csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-					csAux.Format(_T("%d.VOB"), nVobin);
-					csAux=csAux2+csAux;
-					in=fopen(csAux,"rb");
+					csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                                        csAux.str("");
+                                        csAux << csAux2 << nVobin << ".VOB";
+					in = fopen(csAux.str().c_str(), "rb");
 					if (readbuffer(m_buffer,in)!=2048)
 					{
 						MyErrorBox("Input error: Reached end of VOB too early");
@@ -1609,8 +1590,8 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
+		fout = fopen(csAux.str().c_str(), "w");
 		for (nCell=0,nCurrAngle=0; nCell<m_nCells[nPGC] && m_bInProcess==true; nCell++)
 		{
 			dwCellDuration=GetNbytes(4,&m_pIFO[m_C_PBKT[nPGC]+24*nCell+4]);
@@ -1641,14 +1622,14 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng, CWnd* pDlg)
 	return iRet;
 }
 
-int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
+int CPgcDemuxApp::PgcMDemux(int nPGC)
 {
 	int nTotalSectors;
 	int nSector,nCell;
 	int k,iArraysize;
 	int CID,VID;
 	__int64 i64IniSec,i64EndSec;
-	CString csAux,csAux2;
+	string csAux,csAux2;
 	FILE *in,*fout;
 	__int64 i64;
 	bool bMyCell;
@@ -1659,7 +1640,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 
 	if (nPGC >= theApp.m_nMPGCs)
 	{
-		MyErrorBox("Error: PGC does not exist");
+		MyErrorBox("Error: PgcMDemux: PGC does not exist");
 		m_bInProcess=false;
 		return -1;
 	}
@@ -1670,7 +1651,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 
 // Calculate  the total number of sectors
 	nTotalSectors=0;
-	iArraysize=m_MADT_Cell_list.GetSize();
+	iArraysize=m_MADT_Cell_list.size();
 	for (nCell=0; nCell<m_nMCells[nPGC]; nCell++)
 	{
 		VID=GetNbytes(2,&m_pIFO[m_M_C_POST[nPGC]+4*nCell]);
@@ -1698,18 +1679,18 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 
 		if (m_bVMGM)
 		{
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-3);
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
 			csAux=csAux2+"VOB";
 		}
 		else
 		{
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
 			csAux=csAux2+"0.VOB";
 		}
-		in=fopen(csAux,"rb");
+		in = fopen(csAux.c_str(), "rb");
 		if (in ==NULL)
 		{
-			MyErrorBox("Error opening input VOB: "+csAux);
+			MyErrorBox(("Error opening input VOB: " + csAux).c_str());
 			m_bInProcess=false;
 			iRet=-1;
 		}
@@ -1718,7 +1699,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 		for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 		{
 			//readpack
-			if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+			if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 			if (readbuffer(m_buffer,in)!=2048)
 			{
 				if (in!=NULL) fclose (in);
@@ -1762,8 +1743,8 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
+		fout = fopen(csAux.c_str(), "w");
 		for (nCell=0; nCell<m_nMCells[nPGC] && m_bInProcess==true; nCell++)
 		{
 			dwCellDuration=GetNbytes(4,&m_pIFO[m_M_C_PBKT[nPGC]+24*nCell+4]);
@@ -1785,7 +1766,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC, CWnd* pDlg)
 /////////////   Demuxing Code : DEMUX BY VOBID
 ////////////////////////////////////////////////////////////////////////////////
 
-int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
+int CPgcDemuxApp::VIDDemux(int nVid)
 {
 	int nTotalSectors;
 	int nSector,nCell;
@@ -1794,7 +1775,8 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
-	CString csAux,csAux2;
+        stringstream csAux;
+	string csAux2;
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
@@ -1802,7 +1784,7 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 	int nFrames;
 	int nLastCell;
 
-	if (nVid >= m_AADT_Vid_list.GetSize())
+	if (nVid >= int(m_AADT_Vid_list.size()))
 	{
 		MyErrorBox("Error: Selected Vid does not exist");
 		m_bInProcess=false;
@@ -1819,7 +1801,7 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 	iRet=0;
 	nDemuxedVID=m_AADT_Vid_list[nVid].VID; 
 
-	iArraysize=m_AADT_Cell_list.GetSize();
+	iArraysize=m_AADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 	{
 		VID=m_AADT_Cell_list[nCell].VID;
@@ -1839,13 +1821,13 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 					k=20;
 				}
 			}
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-			csAux.Format(_T("%d.VOB"), nVobin);
-			csAux=csAux2+csAux;
-			in=fopen(csAux,"rb");
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                        csAux.str("");
+                        csAux << csAux2 << nVobin << ".VOB";
+			in = fopen(csAux.str().c_str(), "rb");
 			if (in ==NULL)
 			{
-				MyErrorBox("Error opening input VOB: "+csAux);
+				MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
 				m_bInProcess=false;
 				iRet=-1;
 			}
@@ -1854,15 +1836,15 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 			for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 			{
 			//readpack
-				if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+				if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 				if (readbuffer(m_buffer,in)!=2048)
 				{
 					if (in!=NULL) fclose (in);
 					nVobin++;
-					csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-					csAux.Format(_T("%d.VOB"), nVobin);
-					csAux=csAux2+csAux;
-					in=fopen(csAux,"rb");
+					csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                                        csAux.str("");
+                                        csAux << csAux2 << nVobin << ".VOB";
+					in = fopen(csAux.str().c_str(), "rb");
 					if (readbuffer(m_buffer,in)!=2048)
 					{
 						MyErrorBox("Input error: Reached end of VOB too early");
@@ -1906,12 +1888,12 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
+		fout = fopen(csAux.str().c_str(), "w");
 
 		nDemuxedVID=m_AADT_Vid_list[nVid].VID; 
 
-		iArraysize=m_AADT_Cell_list.GetSize();
+		iArraysize=m_AADT_Cell_list.size();
 		for (nCell=nLastCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
 			VID=m_AADT_Cell_list[nCell].VID;
@@ -1940,14 +1922,14 @@ int CPgcDemuxApp::VIDDemux(int nVid, CWnd* pDlg)
 	return iRet;
 }
 
-int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
+int CPgcDemuxApp::VIDMDemux(int nVid)
 {
 	int nTotalSectors;
 	int nSector,nCell;
 	int iArraysize;
 	int CID,VID,nDemuxedVID;
 	__int64 i64IniSec,i64EndSec;
-	CString csAux,csAux2;
+	string csAux,csAux2;
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
@@ -1955,7 +1937,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 	int nFrames;
 	int nLastCell;
 
-	if (nVid >= m_MADT_Vid_list.GetSize())
+	if (nVid >= int(m_MADT_Vid_list.size()))
 	{
 		MyErrorBox("Error: Selected Vid does not exist");
 		m_bInProcess=false;
@@ -1972,7 +1954,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 	iRet=0;
 	nDemuxedVID=m_MADT_Vid_list[nVid].VID; 
 
-	iArraysize=m_MADT_Cell_list.GetSize();
+	iArraysize=m_MADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 	{
 		VID=m_MADT_Cell_list[nCell].VID;
@@ -1984,18 +1966,18 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 			i64EndSec=m_MADT_Cell_list[nCell].iEndSec;
 			if (m_bVMGM)
 			{
-				csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-3);
+				csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
 				csAux=csAux2+"VOB";
 			}
 			else
 			{
-				csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
+				csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
 				csAux=csAux2+"0.VOB";
 			}
-			in=fopen(csAux,"rb");
+			in = fopen(csAux.c_str(), "rb");
 			if (in ==NULL)
 			{
-				MyErrorBox("Error opening input VOB: "+csAux);
+				MyErrorBox(("Error opening input VOB: " + csAux).c_str());
 				m_bInProcess=false;
 				iRet=-1;
 			}
@@ -2004,7 +1986,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 			for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 			{
 	//readpack
-				if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+				if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 				if (readbuffer(m_buffer,in)!=2048)
 				{
 					if (in!=NULL) fclose (in);
@@ -2049,12 +2031,12 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
+		fout = fopen(csAux.c_str(), "w");
 
 		nDemuxedVID=m_MADT_Vid_list[nVid].VID; 
 
-		iArraysize=m_MADT_Cell_list.GetSize();
+		iArraysize=m_MADT_Cell_list.size();
 
 		for (nCell=nLastCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
@@ -2087,7 +2069,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid, CWnd* pDlg)
 ////////////////////////////////////////////////////////////////////////////////
 /////////////   Demuxing Code : DEMUX BY CELLID
 ////////////////////////////////////////////////////////////////////////////////
-int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
+int CPgcDemuxApp::CIDDemux(int nCell)
 {
 	int nTotalSectors;
 	int nSector;
@@ -2096,14 +2078,15 @@ int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
-	CString csAux,csAux2;
+        stringstream csAux;
+	string csAux2;
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
 	int iRet;
 	int nFrames;
 
-	if (nCell >= m_AADT_Cell_list.GetSize())
+	if (nCell >= int(m_AADT_Cell_list.size()))
 	{
 		MyErrorBox("Error: Selected Cell does not exist");
 		m_bInProcess=false;
@@ -2134,13 +2117,13 @@ int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
 			k=20;
 		}
 	}
-	csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-	csAux.Format(_T("%d.VOB"), nVobin);
-	csAux=csAux2+csAux;
-	in=fopen(csAux,"rb");
+	csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+        csAux.str("");
+        csAux << csAux2 << nVobin << ".VOB";
+	in = fopen(csAux.str().c_str(), "rb");
 	if (in ==NULL)
 	{
-		MyErrorBox("Error opening input VOB: "+csAux);
+		MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
 		m_bInProcess=false;
 		iRet=-1;
 	}
@@ -2149,15 +2132,15 @@ int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
 	for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 	{
 	//readpack
-		if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+		if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 		if (readbuffer(m_buffer,in)!=2048)
 		{
 			if (in!=NULL) fclose (in);
 			nVobin++;
-			csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
-			csAux.Format(_T("%d.VOB"), nVobin);
-			csAux=csAux2+csAux;
-			in=fopen(csAux,"rb");
+			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
+                        csAux.str("");
+                        csAux << csAux2 << nVobin << ".VOB";
+			in = fopen(csAux.str().c_str(), "rb");
 			if (readbuffer(m_buffer,in)!=2048)
 			{
 				MyErrorBox("Input error: Reached end of VOB too early");
@@ -2200,8 +2183,8 @@ int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
+		fout = fopen(csAux.str().c_str(), "w");
 		nFrames=DurationInFrames(m_AADT_Cell_list[nCell].dwDuration);
 		if (m_bCheckEndTime ) 
 			fprintf(fout,"%d\n",nFrames);
@@ -2215,20 +2198,20 @@ int CPgcDemuxApp::CIDDemux(int nCell, CWnd* pDlg)
 	return iRet;
 }
 
-int CPgcDemuxApp::CIDMDemux(int nCell, CWnd* pDlg)
+int CPgcDemuxApp::CIDMDemux(int nCell)
 {
 	int nTotalSectors;
 	int nSector;
 	int CID,VID;
 	__int64 i64IniSec,i64EndSec;
-	CString csAux,csAux2;
+	string csAux,csAux2;
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
 	int iRet;
 	int nFrames;
 
-	if (nCell >= m_MADT_Cell_list.GetSize())
+	if (nCell >= int(m_MADT_Cell_list.size()))
 	{
 		MyErrorBox("Error: Selected Cell does not exist");
 		m_bInProcess=false;
@@ -2251,18 +2234,18 @@ int CPgcDemuxApp::CIDMDemux(int nCell, CWnd* pDlg)
 	i64EndSec=m_MADT_Cell_list[nCell].iEndSec;
 	if (m_bVMGM)
 	{
-		csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-3);
+		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
 		csAux=csAux2+"VOB";
 	}
 	else
 	{
-		csAux2=m_csInputIFO.Left(m_csInputIFO.GetLength()-5);
+		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
 		csAux=csAux2+"0.VOB";
 	}
-	in=fopen(csAux,"rb");
+	in = fopen(csAux.c_str(), "rb");
 	if (in ==NULL)
 	{
-		MyErrorBox("Error opening input VOB: "+csAux);
+		MyErrorBox(("Error opening input VOB: " + csAux).c_str());
 		m_bInProcess=false;
 		iRet=-1;
 	}
@@ -2271,7 +2254,7 @@ int CPgcDemuxApp::CIDMDemux(int nCell, CWnd* pDlg)
 	for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
 	{
 	//readpack
-		if ((i64%MODUPDATE) == 0) UpdateProgress(pDlg, (int)((100*nSector)/nTotalSectors) );
+		if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
 		if (readbuffer(m_buffer,in)!=2048)
 		{
 			if (in!=NULL) fclose (in);
@@ -2313,8 +2296,8 @@ int CPgcDemuxApp::CIDMDemux(int nCell, CWnd* pDlg)
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux=m_csOutputPath+ '\\' + "Celltimes.txt";
-		fout=fopen(csAux,"w");
+		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
+		fout = fopen(csAux.c_str(), "w");
 		nFrames=DurationInFrames(m_MADT_Cell_list[nCell].dwDuration);
 		if (m_bCheckEndTime ) 
 			fprintf(fout,"%d\n",nFrames);
@@ -2335,103 +2318,85 @@ int CPgcDemuxApp::CIDMDemux(int nCell, CWnd* pDlg)
 ////////////////////////////////////////////////////////////////////////////////
 void CPgcDemuxApp::OutputLog(int nItem, int nAng, int iDomain)
 {
-	CString csFilePath, csAux, csAux1,csAux2;
+	string csFilePath, csAux, csAux1, csAux2;
 	int k;
 	int AudDelay;
 
-	csFilePath=m_csOutputPath+ '\\' + "LogFile.txt";
+	csFilePath=m_csOutputPath+ '/' + "LogFile.txt";
 
-	DeleteFile(csFilePath);
+        ofstream log(csFilePath.c_str(), ios_base::out | ios_base::trunc);
 
-	csAux.Format(_T("%d"),m_nPGCs);
-	WritePrivateProfileString("General", "Total Number of PGCs   in Titles", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nMPGCs);
-	WritePrivateProfileString("General", "Total Number of PGCs   in  Menus", csAux, csFilePath);
+        log << "[General]" << endl;
 
-	csAux.Format(_T("%d"),m_AADT_Vid_list.GetSize());
-	WritePrivateProfileString("General", "Total Number of VobIDs in Titles", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_MADT_Vid_list.GetSize());
-	WritePrivateProfileString("General", "Total Number of VobIDs in  Menus", csAux, csFilePath);
-
-	csAux.Format(_T("%d"),m_AADT_Cell_list.GetSize());
-	WritePrivateProfileString("General", "Total Number of Cells  in Titles", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_MADT_Cell_list.GetSize());
-	WritePrivateProfileString("General", "Total Number of Cells  in  Menus", csAux, csFilePath);
+	log << "Total Number of PGCs   in Titles=" << m_nPGCs << endl;
+	log << "Total Number of PGCs   in  Menus=" << m_nMPGCs << endl;
+	log << "Total Number of VobIDs in Titles=" << m_AADT_Vid_list.size() << endl;
+	log << "Total Number of VobIDs in  Menus=" << m_MADT_Vid_list.size() << endl;
+	log << "Total Number of Cells  in Titles=" << m_AADT_Cell_list.size() << endl;
+	log << "Total Number of Cells  in  Menus=" << m_MADT_Cell_list.size() << endl;
 
 	if (m_iMode==PGCMODE) csAux="by PGC";
 	else if (m_iMode==VIDMODE) csAux="by VOB Id";
 	else if (m_iMode==CIDMODE) csAux="Single Cell";
-	WritePrivateProfileString("General", "Demuxing   Mode", csAux, csFilePath);
+
+	log << "Demuxing   Mode=" << csAux << endl;
 
 	if (iDomain==TITLES) csAux="Titles";
 	else  csAux="Menus";
-	WritePrivateProfileString("General", "Demuxing Domain", csAux, csFilePath);
 
-	csAux.Format(_T("%d"),m_nTotalFrames);
-	WritePrivateProfileString("General", "Total Number of Frames", csAux, csFilePath);
+	log << "Demuxing Domain=" << csAux << endl;
+
+	log << "Total Number of Frames=" << m_nTotalFrames << endl;
 
 	if (m_iMode==PGCMODE)
 	{
-		csAux.Format(_T("%d"),nItem+1);
-		WritePrivateProfileString("General", "Selected PGC", csAux, csFilePath);
-
-		if (iDomain==TITLES)
-			csAux.Format(_T("%d"),m_nCells[nItem]);
-		else
-			csAux.Format(_T("%d"),m_nMCells[nItem]);
-	
-		WritePrivateProfileString("General", "Number of Cells in Selected PGC", csAux, csFilePath);
-		WritePrivateProfileString("General", "Selected VOBID", "None", csFilePath);
-		WritePrivateProfileString("General", "Number of Cells in Selected VOB", "None", csFilePath);
+		log << "Selected PGC=" << nItem + 1 << endl;
+		log << "Number of Cells in Selected PGC=" << (iDomain==TITLES ? m_nCells[nItem] : m_nMCells[nItem]) << endl;
+		log << "Selected VOBID=" << "None" << endl;
+		log << "Number of Cells in Selected VOB=" << "None" << endl;
 
 	}
 	if (m_iMode==VIDMODE)
 	{
-		if (iDomain==TITLES)
-			csAux.Format(_T("%d"),m_AADT_Vid_list[nItem].VID);
-		else
-			csAux.Format(_T("%d"),m_MADT_Vid_list[nItem].VID);
-	
-		WritePrivateProfileString("General", "Selected VOBID", csAux, csFilePath);
-
-		if (iDomain==TITLES)
-			csAux.Format(_T("%d"),m_AADT_Vid_list[nItem].nCells);
-		else
-			csAux.Format(_T("%d"),m_MADT_Vid_list[nItem].nCells);
-	
-		WritePrivateProfileString("General", "Number of Cells in Selected VOB", csAux, csFilePath);
-		WritePrivateProfileString("General", "Selected PGC", "None", csFilePath);
-		WritePrivateProfileString("General", "Number of Cells in Selected PGC", "None", csFilePath);
+		log << "Selected VOBID=" << (iDomain==TITLES ? m_AADT_Vid_list[nItem].VID : m_MADT_Vid_list[nItem].VID) << endl;
+		log << "Number of Cells in Selected VOB=" << (iDomain==TITLES ? m_AADT_Vid_list[nItem].nCells : m_MADT_Vid_list[nItem].nCells) << endl;
+		log << "Selected PGC=" << "None" << endl;
+		log << "Number of Cells in Selected PGC=" << "None" << endl;
 	}
 	if (m_iMode==CIDMODE)
 	{
-		WritePrivateProfileString("General", "Selected VOBID", "None", csFilePath);
-		WritePrivateProfileString("General", "Number of Cells in Selected VOB", "None", csFilePath);
-		WritePrivateProfileString("General", "Selected PGC", "None", csFilePath);
-		WritePrivateProfileString("General", "Number of Cells in Selected PGC", "None", csFilePath);
+		log << "Selected VOBID=" << "None" << endl;
+		log << "Number of Cells in Selected VOB=" << "None" << endl;
+		log << "Selected PGC=" << "None" << endl;
+		log << "Number of Cells in Selected PGC=" << "None" << endl;
 	}
 
-	csAux.Format(_T("%d"),m_nVidPacks);
-	WritePrivateProfileString("Demux", "Number of Video Packs", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nAudPacks);
-	WritePrivateProfileString("Demux", "Number of Audio Packs", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nSubPacks);
-	WritePrivateProfileString("Demux", "Number of Subs  Packs", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nNavPacks);
-	WritePrivateProfileString("Demux", "Number of Nav   Packs", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nPadPacks);
-	WritePrivateProfileString("Demux", "Number of Pad   Packs", csAux, csFilePath);
-	csAux.Format(_T("%d"),m_nUnkPacks);
-	WritePrivateProfileString("Demux", "Number of Unkn  Packs", csAux, csFilePath);
+        log << endl << "[Demux]" << endl;
+
+	log << "Number of Video Packs=" << m_nVidPacks << endl;
+	log << "Number of Audio Packs=" << m_nAudPacks << endl;
+	log << "Number of Subs  Packs=" << m_nSubPacks << endl;
+	log << "Number of Nav   Packs=" << m_nNavPacks << endl;
+	log << "Number of Pad   Packs=" << m_nPadPacks << endl;
+	log << "Number of Unkn  Packs=" << m_nUnkPacks << endl;
+
+        log << showbase << internal << setfill('0');
+
+        log << endl << "[Audio Streams]" << endl;
 
 	for (k=0;k<8;k++)
 	{
-		csAux.Format(_T("Audio_%d"),k+1);
+                log << "Audio_" << k + 1 << "=";
 		if (m_iFirstAudPTS[k])
-			csAux1.Format(_T("0x%02X"),m_iAudIndex[k]);
+			log << hex << setw(2) << uppercase << m_iAudIndex[k] << dec << setw(0) << nouppercase << endl;
 		else
-			csAux1="None";
-		WritePrivateProfileString("Audio Streams",csAux, csAux1, csFilePath);
+			log << "None" << endl;
+        }
+
+        log << endl << "[Audio Delays]" << endl;
+
+	for (k=0;k<8;k++)
+	{
 		if (m_iFirstAudPTS[k])
 		{
 //			AudDelay=m_iFirstAudPTS[k]-m_iFirstVidPTS;
@@ -2442,24 +2407,25 @@ void CPgcDemuxApp::OutputLog(int nItem, int nAng, int iDomain)
 			else
 				AudDelay+=44;
 			AudDelay/=90;
-			csAux2.Format(_T("%d"),AudDelay);
-			WritePrivateProfileString("Audio Delays",csAux, csAux2, csFilePath);
+                        log << "Audio_" << k + 1 << "=" << AudDelay << endl;
 		}
 	}
+
+        log << endl << "[Subs Streams]" << endl;
+
 	for (k=0;k<32;k++)
 	{
-		csAux.Format(_T("Subs_%02d"),k+1);
+                log << "Subs_" << setw(2) << k+1 << setw(0) << "=";
 		if (m_iFirstSubPTS[k])
-			csAux1.Format(_T("0x%02X"),k+0x20);
+			log << hex << setw(2) << uppercase << k + 0x20 << dec << setw(0) << nouppercase << endl;
 		else
-			csAux1="None";
-		WritePrivateProfileString("Subs Streams",csAux, csAux1, csFilePath);
+			log << "None" << endl;
 	}
 }
 
 void CPgcDemuxApp::WritePack(uchar* buffer)
 {
-	CString csAux;
+	stringstream csAux;
 
 	if (m_bInProcess==true)
 	{
@@ -2469,12 +2435,13 @@ void CPgcDemuxApp::WritePack(uchar* buffer)
 			{
 				m_nCurrVid=m_nVidout;
 				if (fvob != NULL) fclose(fvob);
+                                csAux.str("");
+				csAux << m_csOutputPath << '/';
 				if (m_iDomain==TITLES)
-					csAux.Format(_T("VTS_01_1_%03d.VOB"), m_nVidout);
+					csAux << "VTS_01_1_" << setfill('0') << setw(3) << m_nVidout << ".VOB";
 				else
-					csAux.Format(_T("VTS_01_0_%03d.VOB"), m_nVidout);
-				csAux=m_csOutputPath+ '\\' +csAux;
-				fvob=fopen(csAux,"wb");
+					csAux << "VTS_01_0_" << setfill('0') << setw(3) << m_nVidout << ".VOB";
+				fvob = fopen(csAux.str().c_str(), "wb");
 			}
 		}
 		else
@@ -2482,16 +2449,16 @@ void CPgcDemuxApp::WritePack(uchar* buffer)
 			if  (fvob==NULL || ((m_i64OutputLBA)%(512*1024-1))==0 )
 			{
 				if (fvob != NULL) fclose(fvob);
+                                csAux.str("");
+				csAux << m_csOutputPath << '/';
 				if (m_iDomain==TITLES)
 				{
 					m_nVobout++;
-					csAux.Format(_T("VTS_01_%d.VOB"), m_nVobout);
+					csAux << "VTS_01_" << setw(0) << m_nVobout << ".VOB";
 				}
 				else
-					csAux="VTS_01_0.VOB";
-
-				csAux=m_csOutputPath+ '\\' +csAux;
-				fvob=fopen(csAux,"wb");
+					csAux << "VTS_01_0.VOB";
+				fvob = fopen(csAux.str().c_str(), "wb");
 			}
 		}
 
@@ -2534,12 +2501,12 @@ void  CPgcDemuxApp::CloseAndNull()
 				i64size=0;
 				fclose(faud[i]);
 	
-				if (_stati64 ( m_csAudname[i], &statbuf)==0)
+				if (_stati64 ( m_csAudname[i].c_str(), &statbuf)==0)
 					i64size= statbuf.st_size;
 
 				if (i64size >= 8) i64size-=8;
 
-				faud[i]=fopen(m_csAudname[i],"r+b");
+				faud[i] = fopen(m_csAudname[i].c_str(), "r+b");
 
 				fseek(faud[i],4,SEEK_SET);
 				fputc ((uchar)(i64size%256),faud[i]);
@@ -2594,7 +2561,7 @@ void  CPgcDemuxApp::CloseAndNull()
 
 int CPgcDemuxApp::check_sub_open (uchar i)
 {
-	CString csAux;
+	stringstream csAux;
 
 	i-=0x20;
 
@@ -2602,11 +2569,12 @@ int CPgcDemuxApp::check_sub_open (uchar i)
 	
 	if (fsub[i]==NULL)
 	{
-		csAux.Format(_T("Subpictures_%02X.sup"),i+0x20);
-		csAux=m_csOutputPath+ '\\' +csAux;
-        if ((fsub[i]=fopen(csAux,"wb"))==NULL)
+                csAux.str("");
+                csAux << m_csOutputPath << '/';
+		csAux << "Subpictures_" << hex << setfill('0') << setw(2) << uppercase << i+0x20 << nouppercase << ".sup";
+        if ((fsub[i] = fopen(csAux.str().c_str(), "wb")) == NULL)
 		{
-			MyErrorBox("Error opening output subs file:" + csAux);
+			MyErrorBox(("Error opening output subs file:" + csAux.str()).c_str());
 			m_bInProcess=false;
 			return 1;
 		}
@@ -2618,7 +2586,7 @@ int CPgcDemuxApp::check_sub_open (uchar i)
 
 int CPgcDemuxApp::check_aud_open (uchar i)
 {
-	CString csAux;
+	stringstream csAux;
 	uchar ii;
 /*
 0x80-0x87: ac3  --> ac3
@@ -2654,48 +2622,51 @@ SDSS   AC3   DTS   LPCM   MPEG-1   MPEG-2
 	
 	if (faud[i]==NULL)
 	{
+		csAux.str("");
+                csAux << m_csOutputPath << '/' << "AudioFile_";
+                csAux << hex << setw(2);
+
 		if (ii >= 0x80 &&  ii <= 0x87)
 		{
-			csAux.Format(_T("AudioFile_%02X.ac3"),i+0x80);
+			csAux << uppercase << i + 0x80 << nouppercase << ".ac3";
 			m_audfmt[i]=AC3;
 		}
 		else if (ii >= 0x88 &&  ii <= 0x8f )
 		{
-			csAux.Format(_T("AudioFile_%02X.dts"),i+0x88);
+			csAux << uppercase << i + 0x88 << nouppercase << ".dts";
 			m_audfmt[i]=DTS;
 		}
 		else if (ii >= 0x90 &&  ii <= 0x97)
 		{
-			csAux.Format(_T("AudioFile_%02X.dds"),i+0x90);
+			csAux << uppercase << i + 0x90 << nouppercase << ".dds";
 			m_audfmt[i]=DDS;
 		}
 		else if (ii >= 0xa0 &&  ii <= 0xa7)
 		{
-			csAux.Format(_T("AudioFile_%02X.wav"),i+0xa0);
+			csAux << uppercase << i + 0xa0 << nouppercase << ".wav";
 			m_audfmt[i]=WAV;
 		}
 		else if (ii >= 0xc0 &&  ii <= 0xc7)
 		{
-			csAux.Format(_T("AudioFile_%02X.mpa"),i+0xc0);
+			csAux << uppercase << i + 0xc0 << nouppercase << ".mpa";
 			m_audfmt[i]=MP1;
 		}
 		else if (ii >= 0xd0 &&  ii <= 0xd7)
 		{
-			csAux.Format(_T("AudioFile_%02X.mpa"),i+0xd0);
+			csAux << uppercase << i + 0xd0 << nouppercase << ".mpa";
 			m_audfmt[i]=MP2;
 		}
 		else 
 		{
-			csAux.Format(_T("AudioFile_%02X.unk"),ii);
+			csAux << uppercase << ii << nouppercase << ".unk";
 			m_audfmt[i]=UNK;
 		}
 
-		csAux=m_csOutputPath+ '\\' +csAux;
-		m_csAudname[i]=csAux;
+		m_csAudname[i] = csAux.str();
 
-        if ((faud[i]=fopen(csAux,"wb"))==NULL)
+        if ((faud[i] = fopen(csAux.str().c_str(), "wb")) == NULL)
 		{
-			MyErrorBox("Error opening output audio file:" + csAux);
+			MyErrorBox(("Error opening output audio file:" + csAux.str()).c_str());
 			m_bInProcess=false;
 			return 1;
 		}
@@ -2814,7 +2785,7 @@ void  CPgcDemuxApp::demuxaudio(uchar* buffer, int nBytesOffset)
 			(nbit==24 && ((nbytes-start)%(6*ncha))) ||
 			(nbit==20 && ((nbytes-start)%(5*ncha))) ) 
 
-			AfxMessageBox( "Error: Uncompleted PCM sample", MB_OK | MB_ICONEXCLAMATION,0 );
+			MyErrorBox("Error: Uncompleted PCM sample");
 
 // if PCM do not take into account nBytesOffset
 		writebuffer(&mybuffer[start],faud[streamID & 0x7],nbytes-start);

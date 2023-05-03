@@ -1,0 +1,26 @@
+# Visual Studio
+*.pch
+*.mdp
+*.ncb
+*.clw
+*.obj
+*.exe
+*.aps
+*.cpl
+*.awk
+*.exp
+*.lib
+*.idb
+*.opt
+*.pdb
+*.map
+*.res
+*.ilk
+*.scc
+*.bsc
+*.sbr
+*.dll
+*.tlb
+*.dsp
+*.dsw
+*.plg

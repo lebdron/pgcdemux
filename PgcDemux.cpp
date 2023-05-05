@@ -9,6 +9,9 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+
+#include "spdlog/spdlog.h"
+
 #include "PgcDemux.h"
 
 using namespace std;
@@ -48,11 +51,11 @@ uchar pcmheader[44] = {
 uchar pcmheader2[58] = {
 	0x52, 0x49, 0x46, 0x46, 0x58, 0x08, 0x2C, 0x00, 0x57, 0x41, 0x56, 0x45,	0x66, 0x6D, 0x74, 0x20,
 	0x12, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x00,	0x80, 0xBB, 0x00, 0x00, 0x00, 0x65, 0x04, 0x00,
-	0x06, 0x00, 0x18, 0x00,	0x00, 0x00, 0x66, 0x61, 0x63, 0x74, 0x04, 0x00, 0x00, 0x00, 0x05, 0x56, 
+	0x06, 0x00, 0x18, 0x00,	0x00, 0x00, 0x66, 0x61, 0x63, 0x74, 0x04, 0x00, 0x00, 0x00, 0x05, 0x56,
 	0x07, 0x00, 0x64, 0x61, 0x74, 0x61, 0x1E, 0x04, 0x2C, 0x00 };
 */
 
-////////////// AUX nibble functions used for code cleaning ///// 
+////////////// AUX nibble functions used for code cleaning /////
 #define hi_nib(a)	((a>>4) & 0x0f)
 #define lo_nib(a)	(a & 0x0f)
 
@@ -98,7 +101,7 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 //	WriteProfileInt("MySection", "My Key",123);
 
 	for (i=0;i<32;i++) fsub[i]=NULL;
-	for (i=0;i<8;i++) 
+	for (i=0;i<8;i++)
 		faud[i]=NULL;
 	fvob=fvid=NULL;
 
@@ -114,7 +117,7 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 	m_bCheckLBA=m_bCheckVideoPack=m_bCheckAudioPack=m_bCheckNavPack=m_bCheckSubPack=TRUE;
 
 
-	if ( argc > 2 ) 
+	if ( argc > 2 )
 		// CLI mode
 	{
 		m_bCLI=true;
@@ -139,8 +142,14 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 					if (m_iDomain==TITLES)
 					{
 						for (k=0;k<m_AADT_Vid_list.size() && nSelVid==-1; k++)
+						{
+							auto const& vid = m_AADT_Vid_list[k];
+							auto const duration = vid.dwDuration;
+							SPDLOG_INFO("VID {:02d} ({:02d})--> {:02X}:{:02X}:{:02X}.{:02X}", k+1, vid.VID,
+								duration/(256*256*256),(duration/(256*256))%256,(duration/256)%256,(duration%256) & 0x3f);
 							if (m_AADT_Vid_list[k].VID==m_nVid)
 								nSelVid=k;
+						}
 					}
 					else
 					{
@@ -148,10 +157,10 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 							if (m_MADT_Vid_list[k].VID==m_nVid)
 								nSelVid=k;
 					}
-					if ( nSelVid==-1) 
+					if ( nSelVid==-1)
 					{
 						m_iRet=-1;
-						MyErrorBox( "Selected Vid not found!");
+						SPDLOG_ERROR("Selected Vid not found!");
 					}
 					if (m_iRet==0)
 					{
@@ -168,8 +177,14 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 					if (m_iDomain==TITLES)
 					{
 						for (k=0;k<m_AADT_Cell_list.size() && nSelCid==-1; k++)
+						{
+							auto const& cell = m_AADT_Cell_list[k];
+							auto const duration = cell.dwDuration;
+							SPDLOG_INFO("{:02d} ({:02d}/{:02d})--> {:02X}:{:02X}:{:02X}.{:02X}", k+1, cell.VID, cell.CID,
+								duration/(256*256*256),(duration/(256*256))%256,(duration/256)%256,(duration%256) & 0x3f);
 							if (m_AADT_Cell_list[k].VID==m_nVid && m_AADT_Cell_list[k].CID==m_nCid)
 								nSelCid=k;
+						}
 					}
 					else
 					{
@@ -177,10 +192,10 @@ BOOL CPgcDemuxApp::InitInstance(int argc, char *argv[])
 							if (m_MADT_Cell_list[k].VID==m_nVid && m_MADT_Cell_list[k].CID==m_nCid)
 								nSelCid=k;
 					}
-					if ( nSelCid==-1) 
+					if ( nSelCid==-1)
 					{
 						m_iRet=-1;
-						MyErrorBox( "Selected Vid/Cid not found!");
+						SPDLOG_ERROR("Selected Vid/Cid not found!");
 					}
 					if (m_iRet==0)
 					{
@@ -284,13 +299,13 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 	m_iDomain=TITLES;
 
 	if (argc < 3) return -1;
-	
+
 	for (i =1 ; i<(argc)-1 ; i++)
 	{
 		csPar=argv[i];
                 transform(csPar.begin(), csPar.end(), csPar.begin(), ::tolower);
 
-		if ( csPar=="-pgc" && argc >i+1 )	
+		if ( csPar=="-pgc" && argc >i+1 )
 		{
 			sscanf ( argv[i+1], "%d", &m_nSelPGC);
 			if (m_nSelPGC <1 || m_nSelPGC >255)
@@ -302,7 +317,7 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			i++;
 			m_nSelPGC--; // internally from 0 to nPGCs-1.
 		}
-		else if ( csPar=="-ang" && argc >i+1 )	
+		else if ( csPar=="-ang" && argc >i+1 )
 		{
 			sscanf ( argv[i+1], "%d", &m_nSelAng);
 			if (m_nSelAng <1 || m_nSelAng >9)
@@ -313,7 +328,7 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			i++;
 			m_nSelAng--; // internally from 0 to nAngs-1.
 		}
-		else if ( csPar=="-vid" && argc >i+1 )	
+		else if ( csPar=="-vid" && argc >i+1 )
 		{
 			sscanf ( argv[i+1], "%d", &m_nVid);
 			if (m_nVid <1 || m_nVid >32768)
@@ -324,7 +339,7 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			m_iMode=VIDMODE;
 			i++;
 		}
-		else if ( csPar=="-cid" && argc >i+2 )	
+		else if ( csPar=="-cid" && argc >i+2 )
 		{
 			sscanf ( argv[i+1], "%d", &m_nVid);
 			sscanf ( argv[i+2], "%d", &m_nCid);
@@ -342,7 +357,7 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			m_iMode=CIDMODE;
 			i+=2;
 		}
-		else if ( csPar=="-customvob" && argc >i+1 )	
+		else if ( csPar=="-customvob" && argc >i+1 )
 		{
 			csPar2 = argv[i+1];
                         transform(csPar2.begin(), csPar2.end(), csPar2.begin(), ::tolower);
@@ -372,22 +387,22 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 			else m_bCheckLBA=FALSE;
 			i++;
 		}
-		else if ( csPar=="-m2v" )  m_bCheckVid=1;   
-		else if ( csPar=="-vob" )  m_bCheckVob=1;   
-		else if ( csPar=="-aud" )  m_bCheckAud=1;   
-		else if ( csPar=="-sub" )  m_bCheckSub=1;   
-		else if ( csPar=="-log" )  m_bCheckLog=1;   
-		else if ( csPar=="-cellt" )  m_bCheckCellt=1;   
-		else if ( csPar=="-endt" )  m_bCheckEndTime=1;   
-		else if ( csPar=="-nom2v" )  m_bCheckVid=0;   
-		else if ( csPar=="-novob" )  m_bCheckVob=0;   
-		else if ( csPar=="-noaud" )  m_bCheckAud=0;   
-		else if ( csPar=="-nosub" )  m_bCheckSub=0;   
-		else if ( csPar=="-nolog" )  m_bCheckLog=0;   
-		else if ( csPar=="-nocellt" )  m_bCheckCellt=0;   
-		else if ( csPar=="-noendt" )  m_bCheckEndTime=0;   
-		else if ( csPar=="-menu" )	m_iDomain=MENUS;   
-		else if ( csPar=="-title" )  m_iDomain=TITLES;   
+		else if ( csPar=="-m2v" )  m_bCheckVid=1;
+		else if ( csPar=="-vob" )  m_bCheckVob=1;
+		else if ( csPar=="-aud" )  m_bCheckAud=1;
+		else if ( csPar=="-sub" )  m_bCheckSub=1;
+		else if ( csPar=="-log" )  m_bCheckLog=1;
+		else if ( csPar=="-cellt" )  m_bCheckCellt=1;
+		else if ( csPar=="-endt" )  m_bCheckEndTime=1;
+		else if ( csPar=="-nom2v" )  m_bCheckVid=0;
+		else if ( csPar=="-novob" )  m_bCheckVob=0;
+		else if ( csPar=="-noaud" )  m_bCheckAud=0;
+		else if ( csPar=="-nosub" )  m_bCheckSub=0;
+		else if ( csPar=="-nolog" )  m_bCheckLog=0;
+		else if ( csPar=="-nocellt" )  m_bCheckCellt=0;
+		else if ( csPar=="-noendt" )  m_bCheckEndTime=0;
+		else if ( csPar=="-menu" )	m_iDomain=MENUS;
+		else if ( csPar=="-title" )  m_iDomain=TITLES;
 	}
 	m_csInputIFO=argv[(argc) -2];
 	m_csOutputPath=argv[(argc) -1];
@@ -403,7 +418,7 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 		MyErrorBox( "Invalid input file!");
 		return FALSE;
 	}
-	
+
 	if (csAux2=="VIDEO_TS.IFO")
 	{
 		m_bVMGM=true;
@@ -481,7 +496,7 @@ void CPgcDemuxApp::FillDurations()
 	int i,j,k;
 	int VIDa,CIDa,VIDb,CIDb;
 	bool bFound;
-	int iVideoAttr, iFormat; 
+	int iVideoAttr, iFormat;
 
 
 	iArraysize=m_AADT_Cell_list.size();
@@ -545,7 +560,7 @@ void CPgcDemuxApp::FillDurations()
 	}
 
 }
-	
+
 ////////////////////////////////////////////////////////////////////////////////
 /////////////  ReadIFO /////
 ////////////////////////////////////////////////////////////////////////////////
@@ -553,7 +568,7 @@ int CPgcDemuxApp::ReadIFO()
 {
         stringstream csAux;
 	string csAux2;
-	int i,j,k,kk,nCell;
+	int i,j,kk,nCell;
         unsigned nVIDs;
 	ADT_CELL_LIST myADT_Cell;
 	ADT_VID_LIST myADT_Vid;
@@ -569,7 +584,7 @@ int CPgcDemuxApp::ReadIFO()
 
 	if (_stati64 ( m_csInputIFO.c_str(), &statbuf)==0)
 		iIFOSize= (int) statbuf.st_size;
-	
+
 	if ( iIFOSize > MAXLENGTH)
 	{
 		csAux.str("");
@@ -606,7 +621,7 @@ int CPgcDemuxApp::ReadIFO()
 
 
 // Get Title Cells
-	if (m_bVMGM) 
+	if (m_bVMGM)
 	{
 		m_iVTS_PTT_SRPT=   0;
 		m_iVTS_PGCI=       0;
@@ -628,13 +643,13 @@ int CPgcDemuxApp::ReadIFO()
 		m_iVTS_C_ADT=      2048*GetNbytes(4,&m_pIFO[0xE0]);
 		m_iVTS_VOBU_ADMAP= 2048*GetNbytes(4,&m_pIFO[0xE4]);
 	}
-	if (m_bVMGM) 
+	if (m_bVMGM)
 		m_nPGCs=0;
 	else
 		m_nPGCs=GetNbytes(2,&m_pIFO[m_iVTS_PGCI]);
 
 
-// Title PGCs	
+// Title PGCs
 	if (m_nPGCs > MAX_PGC)
 	{
 		csAux.str("");
@@ -642,7 +657,7 @@ int CPgcDemuxApp::ReadIFO()
 		MyErrorBox (csAux.str().c_str());
 		return -1;
 	}
-	for (k=0; k<m_nPGCs;k++)
+	for (int k = 0; k < m_nPGCs; k++)
 	{
 		m_iVTS_PGC[k]=GetNbytes(4,&m_pIFO[m_iVTS_PGCI+0x04+(k+1)*8])+m_iVTS_PGCI;
 		m_dwDuration[k]=(DWORD)GetNbytes(4,&m_pIFO[m_iVTS_PGC[k]+4]);
@@ -673,6 +688,9 @@ int CPgcDemuxApp::ReadIFO()
 				bEndAngle=true;
 			}
 		}
+		auto const duration = m_dwDuration[k];
+		SPDLOG_INFO("PGC # {:02d}--> {:02X}:{:02X}:{:02X}.{:02X}", k+1,
+			duration/(256*256*256),(duration/(256*256))%256,(duration/256)%256,(duration%256) & 0x3f);
 	}
 
 
@@ -748,7 +766,7 @@ int CPgcDemuxApp::ReadIFO()
 		CidADT=m_pIFO[m_iVTS_C_ADT+8+12*nADT+2];
 
 		iArraysize=m_AADT_Cell_list.size();
-		for (k=0,bAlready=false; k< iArraysize ;k++)
+		for (int k = 0, bAlready = false; k < iArraysize; k++)
 		{
 			if (CidADT==m_AADT_Cell_list[k].CID &&
 				VidADT==m_AADT_Cell_list[k].VID )
@@ -790,7 +808,7 @@ int CPgcDemuxApp::ReadIFO()
 		CidADT=m_pIFO[m_iVTSM_C_ADT+8+12*nADT+2];
 
 		iArraysize=m_MADT_Cell_list.size();
-		for (k=0,bAlready=false; k< iArraysize ;k++)
+		for (int k = 0, bAlready=false; k < iArraysize; k++)
 		{
 			if (CidADT==m_MADT_Cell_list[k].CID &&
 				VidADT==m_MADT_Cell_list[k].VID )
@@ -819,7 +837,7 @@ int CPgcDemuxApp::ReadIFO()
 
 	FillDurations();
 
-//////////////////////////////////////////////////////////////	
+//////////////////////////////////////////////////////////////
 /////////////   VIDs
 // VIDs in Titles
 	iArraysize=m_AADT_Cell_list.size();
@@ -828,7 +846,7 @@ int CPgcDemuxApp::ReadIFO()
 		VidADT=m_AADT_Cell_list[i].VID;
 
 		nVIDs=m_AADT_Vid_list.size();
-		for (k=0,bAlready=false; k< int(nVIDs) ;k++)
+		for (int k = 0, bAlready = false; k < int(nVIDs); k++)
 		{
 			if (VidADT==m_AADT_Vid_list[k].VID )
 			{
@@ -852,7 +870,7 @@ int CPgcDemuxApp::ReadIFO()
 		m_AADT_Vid_list[kk].nCells++;
 		m_AADT_Vid_list[kk].dwDuration=AddDuration(m_AADT_Cell_list[i].dwDuration,m_AADT_Vid_list[kk].dwDuration);
 	}
-	
+
 // VIDs in Menus
 	iArraysize=m_MADT_Cell_list.size();
 	for (i=0; i <iArraysize; i++)
@@ -860,7 +878,7 @@ int CPgcDemuxApp::ReadIFO()
 		VidADT=m_MADT_Cell_list[i].VID;
 
 		nVIDs=m_MADT_Vid_list.size();
-		for (k=0,bAlready=false; k< int(nVIDs) ;k++)
+		for (int k = 0, bAlready = false; k < int(nVIDs); k++)
 		{
 			if (VidADT==m_MADT_Vid_list[k].VID )
 			{
@@ -884,13 +902,13 @@ int CPgcDemuxApp::ReadIFO()
 		m_MADT_Vid_list[kk].nCells++;
 		m_MADT_Vid_list[kk].dwDuration=AddDuration(m_MADT_Cell_list[i].dwDuration,m_MADT_Vid_list[kk].dwDuration);
 	}
-	
+
 // Fill VOB file size
 	if (m_bVMGM)
 	{
 		m_nVobFiles=0;
 
-		for (k=0; k<10; k++)
+		for (int k = 0; k < 10; k++)
 			m_i64VOBSize[k]=0;
 
 		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
@@ -901,7 +919,7 @@ int CPgcDemuxApp::ReadIFO()
 	}
 	else
 	{
-		for (k=0; k<10; k++)
+		for (int k = 0; k < 10; k++)
 		{
 			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
                         csAux.str("");
@@ -911,7 +929,7 @@ int CPgcDemuxApp::ReadIFO()
 				m_i64VOBSize[k]= statbuf.st_size;
 				m_nVobFiles=k;
 			}
-			else 
+			else
 				m_i64VOBSize[k]=0;
 		}
 	}
@@ -932,9 +950,9 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 	bool bFirstAud;
 	int nBytesOffset;
 
-	if ( bWrite && m_bCheckVob ) 
+	if ( bWrite && m_bCheckVob )
 	{
-		if (IsNav(m_buffer)) 
+		if (IsNav(m_buffer))
 		{
 			if (m_bCheckLBA) ModifyLBA (m_buffer,m_i64OutputLBA);
 			m_nVidout= (int) GetNbytes(2,&m_buffer[0x41f]);
@@ -943,7 +961,7 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 			nPack=0;
 
 			bNewCell=false;
-			if (m_nVidout!= m_nLastVid || m_nCidout!= m_nLastCid) 
+			if (m_nVidout!= m_nLastVid || m_nCidout!= m_nLastCid)
 			{
 				bNewCell=true;
 				m_nLastVid=m_nVidout;
@@ -956,13 +974,13 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 		     (IsAudio(m_buffer) && m_bCheckAudioPack) ||
 		     (IsSubs (m_buffer) && m_bCheckSubPack)   )
 				WritePack(m_buffer);
-		else if ( IsVideo(m_buffer) && m_bCheckVideoPack) 
+		else if ( IsVideo(m_buffer) && m_bCheckVideoPack)
 		{
 			if (!m_bCheckIFrame)
 				WritePack(m_buffer);
 			else
 			{
-//				if (nFirstRef == nPack)  
+//				if (nFirstRef == nPack)
 //					if ( ! PatchEndOfSequence(m_buffer))
 //						WritePack (Pad_pack);
 				if (bNewCell && nFirstRef >= nPack ) WritePack(m_buffer);
@@ -977,9 +995,9 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 		m_iNavPTS0= (int) GetNbytes(4,&m_buffer[0x39]);
 		m_iNavPTS1= (int) GetNbytes(4,&m_buffer[0x3d]);
 		if (m_iFirstNavPTS0==0) m_iFirstNavPTS0=m_iNavPTS0;
-		if (m_iNavPTS1_old> m_iNavPTS0) 
+		if (m_iNavPTS1_old> m_iNavPTS0)
 		{
-// Discontinuity, so add the offset 
+// Discontinuity, so add the offset
 			m_iOffsetPTS+=(m_iNavPTS1_old-m_iNavPTS0);
 		}
 		m_iNavPTS0_old=m_iNavPTS0;
@@ -988,7 +1006,7 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 	else if (IsVideo(m_buffer))
 	{
 		m_nVidPacks++;
-		if (m_buffer[0x15] & 0x80) 
+		if (m_buffer[0x15] & 0x80)
 		{
 			m_iVidPTS= readpts(&m_buffer[0x17]);
 			if (m_iFirstVidPTS==0) m_iFirstVidPTS=m_iVidPTS;
@@ -1004,7 +1022,7 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 
 		bFirstAud=false;
 
-		if (m_buffer[0x15] & 0x80) 
+		if (m_buffer[0x15] & 0x80)
 		{
 			if (m_iFirstAudPTS[sID]==0)
 			{
@@ -1032,8 +1050,8 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 	{
 		m_nSubPacks++;
 		sID=m_buffer[0x17+m_buffer[0x16]] & 0x1F;
-		
-		if (m_buffer[0x15] & 0x80) 
+
+		if (m_buffer[0x15] & 0x80)
 		{
 			m_iSubPTS= readpts(&m_buffer[0x17]);
 			if (m_iFirstSubPTS[sID]==0)
@@ -1054,7 +1072,7 @@ int CPgcDemuxApp::ProcessPack(bool bWrite)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/////////////   Audio Delay  Code: 
+/////////////   Audio Delay  Code:
 ////////////////////////////////////////////////////////////////////////////////
 int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 // Returns the number of bytes from audio start until first header
@@ -1079,7 +1097,7 @@ int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 
 // Check if PCM
 	if ( streamID>=0xa0 && streamID<= 0xa7 ) return 0;
-	if ( streamID>=0x80 && streamID<= 0x8f ) 
+	if ( streamID>=0x80 && streamID<= 0x8f )
 	{
 // Stream is AC3 or DTS...
 		nHeaders=buffer[start-3];
@@ -1091,7 +1109,7 @@ int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 		else
 			bFound=false;
 	}
-	else if ( streamID>=0xc0 && streamID<= 0xc7 ) 
+	else if ( streamID>=0xc0 && streamID<= 0xc7 )
 	{
 // Stream is MPEG ...
 		for (i=start, bFound=false ; i< (nbytes-1) && bFound==false ; i++)
@@ -1106,10 +1124,10 @@ int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 	}
 
 	if ((start+firstheader) >= nbytes) bFound=false;
-	
+
 	if (bFound)
 		return firstheader;
-	else 
+	else
 		return -1;
 
 }
@@ -1171,7 +1189,7 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 
 	for (k=0,nCell=-1; k < m_AADT_Cell_list.size() && nCell==-1; k++)
 	{
-		if (VID==m_AADT_Cell_list[k].VID &&	
+		if (VID==m_AADT_Cell_list[k].VID &&
 			CID==m_AADT_Cell_list[k].CID)
 			nCell=k;
 	}
@@ -1243,7 +1261,7 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 				else
 					bMyCell=false;
 			}
-			
+
 			if (iRet==0 && bMyCell)
 			{
 				iRet=ProcessPack(false);
@@ -1311,7 +1329,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 
 	for (k=0,nCell=-1; k < m_MADT_Cell_list.size() && nCell==-1; k++)
 	{
-		if (VID==m_MADT_Cell_list[k].VID &&	
+		if (VID==m_MADT_Cell_list[k].VID &&
 			CID==m_MADT_Cell_list[k].CID)
 			nCell=k;
 	}
@@ -1372,7 +1390,7 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 				else
 					bMyCell=false;
 			}
-			
+
 			if (iRet==0 && bMyCell)
 			{
 				iRet=ProcessPack(false);
@@ -1570,7 +1588,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 						else
 							bMyCell=false;
 					}
-			
+
 					if (bMyCell)
 					{
 						nSector++;
@@ -1583,7 +1601,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 			in=NULL;
 		}  // if (iCat==0 || (nAng+1) == nCurrAngle)
 		if (iCat == 0xD0) nCurrAngle=0;
-	}	// For Cells 
+	}	// For Cells
 
 	CloseAndNull();
 	nFrames=0;
@@ -1606,7 +1624,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 			if (iCat==0 || (nAng+1) == nCurrAngle)
 			{
 				nFrames+=DurationInFrames(dwCellDuration);
-				if (nCell!=(m_nCells[nPGC]-1) || m_bCheckEndTime ) 
+				if (nCell!=(m_nCells[nPGC]-1) || m_bCheckEndTime )
 					fprintf(fout,"%d\n",nFrames);
 			}
 
@@ -1735,7 +1753,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 		} // For readpacks
 		if (in!=NULL) fclose (in);
 		in=NULL;
-	}	// For Cells 
+	}	// For Cells
 
 	CloseAndNull();
 
@@ -1749,7 +1767,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 		{
 			dwCellDuration=GetNbytes(4,&m_pIFO[m_M_C_PBKT[nPGC]+24*nCell+4]);
 			nFrames+=DurationInFrames(dwCellDuration);
-			if (nCell!=(m_nMCells[nPGC]-1) || m_bCheckEndTime ) 
+			if (nCell!=(m_nMCells[nPGC]-1) || m_bCheckEndTime )
 				fprintf(fout,"%d\n",nFrames);
 		}
 		fclose(fout);
@@ -1775,8 +1793,8 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
-        stringstream csAux;
-	string csAux2;
+	std::string filename(m_csInputIFO);
+	filename.replace(filename.size() - 3, 3, "VOB");
 	FILE *in, *fout;
 	__int64 i64;
 	bool bMyCell;
@@ -1790,7 +1808,7 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 		m_bInProcess=false;
 		return -1;
 	}
-	
+
 	IniDemuxGlobalVars();
 	if (OpenVideoFile()) return -1;
 	m_bInProcess=true;
@@ -1799,7 +1817,7 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 	nTotalSectors= m_AADT_Vid_list[nVid].iSize;
 	nSector=0;
 	iRet=0;
-	nDemuxedVID=m_AADT_Vid_list[nVid].VID; 
+	nDemuxedVID=m_AADT_Vid_list[nVid].VID;
 
 	iArraysize=m_AADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
@@ -1821,13 +1839,12 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 					k=20;
 				}
 			}
-			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
-                        csAux.str("");
-                        csAux << csAux2 << nVobin << ".VOB";
-			in = fopen(csAux.str().c_str(), "rb");
+			filename[filename.size() - 5] = '0' + nVobin;
+			SPDLOG_INFO("Opening {}", filename);
+			in = fopen(filename.c_str(), "rb");
 			if (in ==NULL)
 			{
-				MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
+				MyErrorBox(("Error opening input VOB: " + filename).c_str());
 				m_bInProcess=false;
 				iRet=-1;
 			}
@@ -1841,10 +1858,9 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 				{
 					if (in!=NULL) fclose (in);
 					nVobin++;
-					csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
-                                        csAux.str("");
-                                        csAux << csAux2 << nVobin << ".VOB";
-					in = fopen(csAux.str().c_str(), "rb");
+					filename[filename.size() - 5] = '0' + nVobin;
+					SPDLOG_INFO("Opening {}", filename);
+					in = fopen(filename.c_str(), "rb");
 					if (readbuffer(m_buffer,in)!=2048)
 					{
 						MyErrorBox("Input error: Reached end of VOB too early");
@@ -1870,7 +1886,7 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 						else
 							bMyCell=false;
 					}
-			
+
 					if (bMyCell)
 					{
 						nSector++;
@@ -1881,17 +1897,18 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 			if (in!=NULL) fclose (in);
 			in=NULL;
 		}  // if (VID== DemuxedVID)
-	}	// For Cells 
+	}	// For Cells
 
 	CloseAndNull();
 	nFrames=0;
 
 	if (m_bCheckCellt && m_bInProcess==true)
 	{
-		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
-		fout = fopen(csAux.str().c_str(), "w");
+		filename.clear();
+		fmt::format_to(std::back_inserter(filename), "{}/Celltimes.txt", m_csOutputPath);
+		fout = fopen(filename.c_str(), "w");
 
-		nDemuxedVID=m_AADT_Vid_list[nVid].VID; 
+		nDemuxedVID=m_AADT_Vid_list[nVid].VID;
 
 		iArraysize=m_AADT_Cell_list.size();
 		for (nCell=nLastCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
@@ -1908,7 +1925,7 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 			if (VID==nDemuxedVID)
 			{
 				nFrames+=DurationInFrames(m_AADT_Cell_list[nCell].dwDuration);
-				if (nCell!=nLastCell || m_bCheckEndTime ) 
+				if (nCell!=nLastCell || m_bCheckEndTime )
 					fprintf(fout,"%d\n",nFrames);
 			}
 		}
@@ -1943,7 +1960,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 		m_bInProcess=false;
 		return -1;
 	}
-	
+
 	IniDemuxGlobalVars();
 	if (OpenVideoFile()) return -1;
 	m_bInProcess=true;
@@ -1952,7 +1969,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 	nTotalSectors= m_MADT_Vid_list[nVid].iSize;
 	nSector=0;
 	iRet=0;
-	nDemuxedVID=m_MADT_Vid_list[nVid].VID; 
+	nDemuxedVID=m_MADT_Vid_list[nVid].VID;
 
 	iArraysize=m_MADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
@@ -2023,7 +2040,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 			if (in!=NULL) fclose (in);
 			in=NULL;
 		} // If (VID==DemuxedVID)
-	}	// For Cells 
+	}	// For Cells
 
 	CloseAndNull();
 
@@ -2034,7 +2051,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
 		fout = fopen(csAux.c_str(), "w");
 
-		nDemuxedVID=m_MADT_Vid_list[nVid].VID; 
+		nDemuxedVID=m_MADT_Vid_list[nVid].VID;
 
 		iArraysize=m_MADT_Cell_list.size();
 
@@ -2052,7 +2069,7 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 			if (VID==nDemuxedVID)
 			{
 				nFrames+=DurationInFrames(m_MADT_Cell_list[nCell].dwDuration);
-				if (nCell!=nLastCell || m_bCheckEndTime ) 
+				if (nCell!=nLastCell || m_bCheckEndTime )
 					fprintf(fout,"%d\n",nFrames);
 			}
 		}
@@ -2092,7 +2109,7 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 		m_bInProcess=false;
 		return -1;
 	}
-	
+
 	IniDemuxGlobalVars();
 	if (OpenVideoFile()) return -1;
 	m_bInProcess=true;
@@ -2166,7 +2183,7 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 				else
 					bMyCell=false;
 			}
-			
+
 			if (bMyCell)
 			{
 				nSector++;
@@ -2176,7 +2193,7 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 	} // For readpacks
 	if (in!=NULL) fclose (in);
 	in=NULL;
-	
+
 	CloseAndNull();
 
 	nFrames=0;
@@ -2186,7 +2203,7 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
 		fout = fopen(csAux.str().c_str(), "w");
 		nFrames=DurationInFrames(m_AADT_Cell_list[nCell].dwDuration);
-		if (m_bCheckEndTime ) 
+		if (m_bCheckEndTime )
 			fprintf(fout,"%d\n",nFrames);
 		fclose(fout);
 	}
@@ -2217,7 +2234,7 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 		m_bInProcess=false;
 		return -1;
 	}
-	
+
 	IniDemuxGlobalVars();
 	if (OpenVideoFile()) return -1;
 	m_bInProcess=true;
@@ -2299,7 +2316,7 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
 		fout = fopen(csAux.c_str(), "w");
 		nFrames=DurationInFrames(m_MADT_Cell_list[nCell].dwDuration);
-		if (m_bCheckEndTime ) 
+		if (m_bCheckEndTime )
 			fprintf(fout,"%d\n",nFrames);
 		fclose(fout);
 	}
@@ -2314,7 +2331,7 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 
 
 ////////////////////////////////////////////////////////////////////////////////
-/////////////   Aux Code : Log 
+/////////////   Aux Code : Log
 ////////////////////////////////////////////////////////////////////////////////
 void CPgcDemuxApp::OutputLog(int nItem, int nAng, int iDomain)
 {
@@ -2401,7 +2418,7 @@ void CPgcDemuxApp::OutputLog(int nItem, int nAng, int iDomain)
 		{
 //			AudDelay=m_iFirstAudPTS[k]-m_iFirstVidPTS;
 			AudDelay=m_iFirstAudPTS[k]-m_iFirstNavPTS0;
-			
+
 			if (AudDelay <0)
 				AudDelay-=44;
 			else
@@ -2500,7 +2517,7 @@ void  CPgcDemuxApp::CloseAndNull()
 			{
 				i64size=0;
 				fclose(faud[i]);
-	
+
 				if (_stati64 ( m_csAudname[i].c_str(), &statbuf)==0)
 					i64size= statbuf.st_size;
 
@@ -2566,7 +2583,7 @@ int CPgcDemuxApp::check_sub_open (uchar i)
 	i-=0x20;
 
 	if ( i> 31) return -1;
-	
+
 	if (fsub[i]==NULL)
 	{
                 csAux.str("");
@@ -2597,9 +2614,9 @@ int CPgcDemuxApp::check_aud_open (uchar i)
 0xa8-0xaf: unknown
 0xb0-0xbf: unknown
 0xc0-0xc8: mpeg1 --> mpa
-0xc8-0xcf: unknown 
+0xc8-0xcf: unknown
 0xd0-0xd7: mpeg2 --> mpb
-0xd8-0xdf: unknown 
+0xd8-0xdf: unknown
 ---------------------------------------------
 SDSS   AC3   DTS   LPCM   MPEG-1   MPEG-2
 
@@ -2613,13 +2630,13 @@ SDSS   AC3   DTS   LPCM   MPEG-1   MPEG-2
  97    87    8F     A7     C7       D7
 ---------------------------------------------
 */
-	
+
 	ii=i;
 
 	if (ii <0x80) return -1;
 
 	i=i&0x7;
-	
+
 	if (faud[i]==NULL)
 	{
 		csAux.str("");
@@ -2656,7 +2673,7 @@ SDSS   AC3   DTS   LPCM   MPEG-1   MPEG-2
 			csAux << uppercase << i + 0xd0 << nouppercase << ".mpa";
 			m_audfmt[i]=MP2;
 		}
-		else 
+		else
 		{
 			csAux << uppercase << ii << nouppercase << ".unk";
 			m_audfmt[i]=UNK;
@@ -2718,7 +2735,7 @@ void  CPgcDemuxApp::demuxaudio(uchar* buffer, int nBytesOffset)
 	    return;
 
 // Check if PCM
-	if ( streamID>=0xa0 && streamID<= 0xa7 ) 
+	if ( streamID>=0xa0 && streamID<= 0xa7 )
 	{
 		start +=3;
 
@@ -2783,7 +2800,7 @@ void  CPgcDemuxApp::demuxaudio(uchar* buffer, int nBytesOffset)
 
 		if ((nbit==16 && ((nbytes-start)%2)) ||
 			(nbit==24 && ((nbytes-start)%(6*ncha))) ||
-			(nbit==20 && ((nbytes-start)%(5*ncha))) ) 
+			(nbit==20 && ((nbytes-start)%(5*ncha))) )
 
 			MyErrorBox("Error: Uncompleted PCM sample");
 
@@ -2815,7 +2832,7 @@ void  CPgcDemuxApp::demuxsubs(uchar* buffer)
 
 	if (check_sub_open(streamID)==1)
 	    return;
-	if ((buffer[0x16]==0) || (m_buffer[0x15] & 0x80) != 0x80) 
+	if ((buffer[0x16]==0) || (m_buffer[0x15] & 0x80) != 0x80)
 		writebuffer(&buffer[start+1],fsub[streamID & 0x1F],nbytes-start-1);
 	else
 	{

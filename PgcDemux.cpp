@@ -9,7 +9,10 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <filesystem>
+#include <charconv>
 
+#include "dvdread/ifo_read.h"
 #include "spdlog/spdlog.h"
 
 #include "PgcDemux.h"
@@ -566,6 +569,44 @@ void CPgcDemuxApp::FillDurations()
 ////////////////////////////////////////////////////////////////////////////////
 int CPgcDemuxApp::ReadIFO()
 {
+	auto dvd_reader_logger_handler = [](void*, dvd_logger_level_t level, char const* fmt, va_list list) -> void
+	{
+		std::array constexpr level_map = {spdlog::level::info, spdlog::level::err, spdlog::level::warn, spdlog::level::debug};
+		std::string formatted;
+		formatted.reserve(1024);
+		vsnprintf(formatted.data(), formatted.capacity(), fmt, list);
+		spdlog::log(level_map[level], formatted.c_str());
+	};
+	dvd_logger_cb dvdread_logcb = { .pf_log = dvd_reader_logger_handler };
+
+	std::filesystem::path dvd_path(m_csInputIFO);
+	dvd_path.remove_filename();
+	auto dvd = DVDOpen2(nullptr, &dvdread_logcb, dvd_path.c_str());
+	if (not dvd) {
+		SPDLOG_ERROR("Failed to open the DVD at {}", dvd_path.c_str());
+		return -1;
+	}
+	auto close_dvd = [dvd](...){ DVDClose(dvd); };
+	std::unique_ptr<void, decltype(close_dvd)> dvd_closer(nullptr, close_dvd);
+
+	int title_index = 0;
+	if (not m_bVMGM) {
+		std::string_view const ifo_filename(m_csInputIFO);
+		auto const title_index_str = ifo_filename.substr(ifo_filename.size() - 8, 2);
+		auto [ptr, ec] = std::from_chars(title_index_str.data(), title_index_str.data() + title_index_str.size(), title_index);
+		if (ec != std::errc()) {
+			SPDLOG_ERROR("Failed to parse title index {}: {}", title_index_str, std::make_error_code(ec).message());
+			return -1;
+		}
+	}
+	auto ifo_file = ifoOpen(dvd, title_index);
+	if (not ifo_file) {
+		SPDLOG_ERROR("Failed to open title {}", title_index);
+		return -1;
+	}
+	auto close_ifo = [ifo_file](...){ ifoClose(ifo_file); };
+	std::unique_ptr<void, decltype(close_ifo)> ifo_closer(nullptr, close_ifo);
+
         stringstream csAux;
 	string csAux2;
 	int i,j,kk,nCell;

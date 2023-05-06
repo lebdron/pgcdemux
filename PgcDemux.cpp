@@ -1869,247 +1869,159 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 ////////////////////////////////////////////////////////////////////////////////
 /////////////   Demuxing Code : DEMUX BY CELLID
 ////////////////////////////////////////////////////////////////////////////////
-int CPgcDemuxApp::CIDDemux(int nCell)
-{
-	int nTotalSectors;
-	int nSector;
-	__int64 i64IniSec,i64EndSec;
-	__int64 i64sectors;
-	int nVobin;
-        stringstream csAux;
-	string csAux2;
-	FILE *in, *fout;
-	__int64 i64;
-	bool bMyCell;
-	int iRet;
-	int nFrames;
-
-	if (nCell >= int(m_AADT_Cell_list.size()))
+template <typename FVob, typename FRet>
+int CidDemuxBase(int nCell, CPgcDemuxApp &app, CPgcDemuxApp::CellList const& cell_list, FVob&& f_vob, FRet&& f_ret, int iDomain) {
+	if (nCell >= int(cell_list.size()))
 	{
 		MyErrorBox("Error: Selected Cell does not exist");
-		m_bInProcess=false;
+		app.m_bInProcess=false;
 		return -1;
 	}
 
-	IniDemuxGlobalVars();
-	if (OpenVideoFile()) return -1;
-	m_bInProcess=true;
+	app.IniDemuxGlobalVars();
+	if (app.OpenVideoFile()) return -1;
+	app.m_bInProcess = true;
 
 // Calculate  the total number of sectors
-	nTotalSectors= m_AADT_Cell_list[nCell].iSize;
-	nSector=0;
-	iRet=0;
+	int nTotalSectors = cell_list[nCell].iSize;
+	int nSector = 0;
+	int iRet = 0;
 
-	auto VID = m_AADT_Cell_list[nCell].VID;
-	auto CID = m_AADT_Cell_list[nCell].CID;
+	auto VID = cell_list[nCell].VID;
+	auto CID = cell_list[nCell].CID;
 
-	i64IniSec=m_AADT_Cell_list[nCell].iIniSec;
-	i64EndSec=m_AADT_Cell_list[nCell].iEndSec;
-	i64sectors = 0;
-	for (int k = 1; k < 10; k++)
+	int64_t i64IniSec = cell_list[nCell].iIniSec;
+	int64_t i64EndSec = cell_list[nCell].iEndSec;
+	FILE *in = f_vob(i64IniSec);
+	if (in == nullptr)
 	{
-		i64sectors+=(m_i64VOBSize[k]/2048);
-		if (i64IniSec<i64sectors)
-		{
-			i64sectors-=(m_i64VOBSize[k]/2048);
-			nVobin=k;
-			k=20;
-		}
+		app.m_bInProcess = false;
+		iRet = -1;
 	}
-	csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
-        csAux.str("");
-        csAux << csAux2 << nVobin << ".VOB";
-	in = fopen(csAux.str().c_str(), "rb");
-	if (in ==NULL)
-	{
-		MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
-		m_bInProcess=false;
-		iRet=-1;
-	}
-	if (m_bInProcess) fseek(in, (long) ((i64IniSec-i64sectors)*2048), SEEK_SET);
 
-	for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
+	auto bMyCell = true;
+	for (int64_t i64 = 0; i64 < (i64EndSec - i64IniSec + 1) and app.m_bInProcess == true; i64++)
 	{
 	//readpack
-		if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
-		if (readbuffer(m_buffer,in)!=2048)
+		if ((i64%MODUPDATE) == 0) app.UpdateProgress((int)((100*nSector)/nTotalSectors) );
+		if (readbuffer(app.m_buffer, in) != 2048)
 		{
-			if (in!=NULL) fclose (in);
-			nVobin++;
-			csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
-                        csAux.str("");
-                        csAux << csAux2 << nVobin << ".VOB";
-			in = fopen(csAux.str().c_str(), "rb");
-			if (readbuffer(m_buffer,in)!=2048)
-			{
+			if (in != nullptr) fclose(in);
+			in = f_ret();
+			if (in == nullptr or readbuffer(app.m_buffer, in) != 2048) {
 				MyErrorBox("Input error: Reached end of VOB too early");
-				m_bInProcess=false;
-				iRet=-1;
+				app.m_bInProcess = false;
+				iRet = -1;
 			}
 		}
 
-		if (m_bInProcess==true)
+		if (app.m_bInProcess == true)
 		{
-			if (IsSynch(m_buffer) != true)
+			if (IsSynch(app.m_buffer) != true)
 			{
 				MyErrorBox("Error reading input VOB: Unsynchronized");
-				m_bInProcess=false;
-				iRet=-1;
+				app.m_bInProcess = false;
+				iRet = -1;
 			}
-			if (IsNav(m_buffer))
+			if (IsNav(app.m_buffer))
 			{
-				if (m_buffer[0x420] == uchar(int(VID) % 256) and
-					m_buffer[0x41F] == uchar(int(VID) / 256) and
-					m_buffer[0x422] == uchar(CID))
-					bMyCell=true;
+				if (app.m_buffer[0x420] == uchar(int(VID) % 256) and
+					app.m_buffer[0x41F] == uchar(int(VID) / 256) and
+					app.m_buffer[0x422] == uchar(CID))
+					bMyCell = true;
 				else
-					bMyCell=false;
+					bMyCell = false;
 			}
 
 			if (bMyCell)
 			{
 				nSector++;
-				iRet=ProcessPack(true);
+				iRet = app.ProcessPack(true);
 			}
 		}
 	} // For readpacks
 	if (in!=NULL) fclose (in);
 	in=NULL;
 
-	CloseAndNull();
+	app.CloseAndNull();
 
-	nFrames=0;
+	int nFrames = 0;
 
-	if (m_bCheckCellt && m_bInProcess==true)
+	if (app.m_bCheckCellt and app.m_bInProcess == true)
 	{
-		csAux.str(m_csOutputPath + '/' + "Celltimes.txt");
-		fout = fopen(csAux.str().c_str(), "w");
-		nFrames=DurationInFrames(m_AADT_Cell_list[nCell].dwDuration);
-		if (m_bCheckEndTime )
-			fprintf(fout,"%d\n",nFrames);
+		auto fout = fopen(fmt::format("{}/Celltimes.txt", app.m_csOutputPath).c_str(), "w");
+		nFrames = DurationInFrames(cell_list[nCell].dwDuration);
+		if (app.m_bCheckEndTime)
+			fprintf(fout, "%d\n", nFrames);
 		fclose(fout);
 	}
 
-	m_nTotalFrames=nFrames;
+	app.m_nTotalFrames=nFrames;
 
-	if (m_bCheckLog && m_bInProcess==true) OutputLog(nCell, 1, TITLES);
+	if (app.m_bCheckLog && app.m_bInProcess == true) app.OutputLog(nCell, 1, iDomain);
 
 	return iRet;
+}
+
+int CPgcDemuxApp::CIDDemux(int nCell)
+{
+	int nVobin;
+	stringstream csAux;
+	string csAux2;
+	return CidDemuxBase(nCell, *this, m_AADT_Cell_list, [&app = *this, &nVobin, &csAux, &csAux2] (int64_t i64IniSec) {
+		auto i64sectors = 0;
+		for (int k = 1; k < 10; k++)
+		{
+			i64sectors += (app.m_i64VOBSize[k] / 2048);
+			if (i64IniSec < i64sectors)
+			{
+				i64sectors -= (app.m_i64VOBSize[k] / 2048);
+				nVobin=k;
+				k=20;
+			}
+		}
+		csAux2 = app.m_csInputIFO.substr(0, app.m_csInputIFO.size() - 5);
+		csAux.str("");
+		csAux << csAux2 << nVobin << ".VOB";
+		auto in = fopen(csAux.str().c_str(), "rb");
+		if (in != nullptr) {
+			fseek(in, (long) ((i64IniSec-i64sectors)*2048), SEEK_SET);
+		} else {
+			MyErrorBox(("Error opening input VOB: " + csAux.str()).c_str());
+		}
+		return in;
+	}, [&app = *this, &nVobin, &csAux, &csAux2] () {
+		nVobin++;
+		csAux2 = app.m_csInputIFO.substr(0, app.m_csInputIFO.size() - 5);
+		csAux.str("");
+		csAux << csAux2 << nVobin << ".VOB";
+		return fopen(csAux.str().c_str(), "rb");
+	}, TITLES);
 }
 
 int CPgcDemuxApp::CIDMDemux(int nCell)
 {
-	int nTotalSectors;
-	int nSector;
-	__int64 i64IniSec,i64EndSec;
-	string csAux,csAux2;
-	FILE *in, *fout;
-	__int64 i64;
-	bool bMyCell;
-	int iRet;
-	int nFrames;
-
-	if (nCell >= int(m_MADT_Cell_list.size()))
-	{
-		MyErrorBox("Error: Selected Cell does not exist");
-		m_bInProcess=false;
-		return -1;
-	}
-
-	IniDemuxGlobalVars();
-	if (OpenVideoFile()) return -1;
-	m_bInProcess=true;
-
-// Calculate  the total number of sectors
-	nTotalSectors= m_MADT_Cell_list[nCell].iSize;
-	nSector=0;
-	iRet=0;
-
-	auto VID = m_MADT_Cell_list[nCell].VID;
-	auto CID = m_MADT_Cell_list[nCell].CID;
-
-	i64IniSec=m_MADT_Cell_list[nCell].iIniSec;
-	i64EndSec=m_MADT_Cell_list[nCell].iEndSec;
-	if (m_bVMGM)
-	{
-		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 3);
-		csAux=csAux2+"VOB";
-	}
-	else
-	{
-		csAux2 = m_csInputIFO.substr(0, m_csInputIFO.size() - 5);
-		csAux=csAux2+"0.VOB";
-	}
-	in = fopen(csAux.c_str(), "rb");
-	if (in ==NULL)
-	{
-		MyErrorBox(("Error opening input VOB: " + csAux).c_str());
-		m_bInProcess=false;
-		iRet=-1;
-	}
-	if (m_bInProcess) fseek(in, (long) ((i64IniSec)*2048), SEEK_SET);
-
-	for (i64=0,bMyCell=true;i64< (i64EndSec-i64IniSec+1) && m_bInProcess==true;i64++)
-	{
-	//readpack
-		if ((i64%MODUPDATE) == 0) UpdateProgress((int)((100*nSector)/nTotalSectors) );
-		if (readbuffer(m_buffer,in)!=2048)
+	string csAux, csAux2;
+	return CidDemuxBase(nCell, *this, m_MADT_Cell_list, [&app = *this, &csAux, &csAux2] (int64_t) {
+		if (app.m_bVMGM)
 		{
-			if (in!=NULL) fclose (in);
-			MyErrorBox("Input error: Reached end of VOB too early");
-			m_bInProcess=false;
-			iRet=-1;
+			csAux2 = app.m_csInputIFO.substr(0, app.m_csInputIFO.size() - 3);
+			csAux=csAux2 + "VOB";
 		}
-		if (m_bInProcess==true)
+		else
 		{
-			if (IsSynch(m_buffer) != true)
-			{
-				MyErrorBox("Error reading input VOB: Unsynchronized");
-				m_bInProcess=false;
-				iRet=-1;
-			}
-			if (IsNav(m_buffer))
-			{
-				if (m_buffer[0x420] == uchar(int(VID) % 256) and
-					m_buffer[0x41F] == uchar(int(VID) / 256) and
-					m_buffer[0x422] == uchar(CID))
-					bMyCell=true;
-				else
-					bMyCell=false;
-			}
-
-			if (bMyCell)
-			{
-				nSector++;
-				iRet=ProcessPack(true);
-			}
+			csAux2 = app.m_csInputIFO.substr(0, app.m_csInputIFO.size() - 5);
+			csAux=csAux2 + "0.VOB";
 		}
-	} // For readpacks
-	if (in!=NULL) fclose (in);
-	in=NULL;
-
-	CloseAndNull();
-
-	nFrames=0;
-
-	if (m_bCheckCellt && m_bInProcess==true)
-	{
-		csAux=m_csOutputPath+ '/' + "Celltimes.txt";
-		fout = fopen(csAux.c_str(), "w");
-		nFrames=DurationInFrames(m_MADT_Cell_list[nCell].dwDuration);
-		if (m_bCheckEndTime )
-			fprintf(fout,"%d\n",nFrames);
-		fclose(fout);
-	}
-
-	m_nTotalFrames=nFrames;
-
-	if (m_bCheckLog && m_bInProcess==true) OutputLog(nCell, 1 , MENUS);
-
-	return iRet;
+		auto in = fopen(csAux.c_str(), "rb");
+		if (in == nullptr) {
+			MyErrorBox(("Error opening input VOB: " + csAux).c_str());
+		}
+		return in;
+	}, [] () {
+		return nullptr;
+	}, MENUS);
 }
-
-
 
 ////////////////////////////////////////////////////////////////////////////////
 /////////////   Aux Code : Log

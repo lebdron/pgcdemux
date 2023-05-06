@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <filesystem>
 #include <charconv>
+#include <type_traits>
 
 #include "dvdread/ifo_read.h"
 #include "spdlog/spdlog.h"
@@ -35,7 +36,7 @@ extern bool IsAudio (uchar* buffer);
 extern bool IsAudMpeg (uchar* buffer);
 extern bool IsSubs (uchar* buffer);
 extern void ModifyCID (uchar* buffer, int VobId, int CellId);
-extern int GetNbytes(int nNumber,uchar* address);
+extern int GetNbytes(int nNumber,uchar const * address);
 extern void Put4bytes(__int64 i64Number,uchar* address);
 extern void MyErrorBox(char const *text);
 extern void ModifyLBA (uchar* buffer, __int64 m_i64OutputLBA);
@@ -73,6 +74,16 @@ inline uchar lo_nib(uchar ch)
   return (ch & 0x0f);
 }
 */
+
+template <typename T>
+requires (std::is_same_v<std::underlying_type_t<T>, int>)
+struct fmt::formatter<T> : formatter<int> {
+  template <typename FormatContext>
+  auto format(T v, FormatContext& ctx) const {
+    return formatter<int>::format(int(v), ctx);
+  }
+};
+
 /////////////////////////////////////////////////////////////////////////////
 // CPgcDemuxApp
 
@@ -333,29 +344,34 @@ option12:{-menu, -title}. Domain. Default Title (except if filename is VIDEO_TS.
 		}
 		else if ( csPar=="-vid" && argc >i+1 )
 		{
-			sscanf ( argv[i+1], "%d", &m_nVid);
-			if (m_nVid <1 || m_nVid >32768)
+			int vid;
+			sscanf ( argv[i+1], "%d", &vid);
+			if (vid < 1 or vid > 32768)
 			{
 				MyErrorBox( "Invalid Vid number!");
 				return FALSE;
 			}
+			m_nVid = Vid(vid);
 			m_iMode=VIDMODE;
 			i++;
 		}
 		else if ( csPar=="-cid" && argc >i+2 )
 		{
-			sscanf ( argv[i+1], "%d", &m_nVid);
-			sscanf ( argv[i+2], "%d", &m_nCid);
-			if (m_nVid <1 || m_nVid >32768)
+			int vid, cid;
+			sscanf ( argv[i+1], "%d", &vid);
+			sscanf ( argv[i+2], "%d", &cid);
+			if (vid < 1 or vid > 32768)
 			{
 				MyErrorBox( "Invalid Vid number!");
 				return FALSE;
 			}
-			if (m_nCid <1 || m_nCid >255)
+			m_nVid = Vid(vid);
+			if (cid < 1 or cid > 255)
 			{
 				MyErrorBox( "Invalid Cid number!");
 				return FALSE;
 			}
+			m_nCid = Cid(cid);
 
 			m_iMode=CIDMODE;
 			i+=2;
@@ -497,7 +513,6 @@ void CPgcDemuxApp::FillDurations()
 {
 	int iArraysize;
 	int i,j,k;
-	int VIDa,CIDa,VIDb,CIDb;
 	bool bFound;
 	int iVideoAttr, iFormat;
 
@@ -506,15 +521,15 @@ void CPgcDemuxApp::FillDurations()
 
 	for (i=0; i<iArraysize; i++)
 	{
-		VIDb=m_AADT_Cell_list[i].VID;
-		CIDb=m_AADT_Cell_list[i].CID;
+		auto VIDb = m_AADT_Cell_list[i].VID;
+		auto CIDb = m_AADT_Cell_list[i].CID;
 		for (j=0,bFound=false;j<m_nPGCs && !bFound; j++)
 		{
 			for (k=0;k<m_nCells[j];k++)
 			{
-				VIDa=GetNbytes(2,&m_pIFO[m_C_POST[j]+k*4]);
-				CIDa=m_pIFO[m_C_POST[j]+k*4+3];
-				if (VIDa==VIDb && CIDa==CIDb)
+				auto VIDa = Vid(GetNbytes(2,&m_pIFO[m_C_POST[j]+k*4]));
+				auto CIDa = Cid(m_pIFO[m_C_POST[j]+k*4+3]);
+				if (VIDa == VIDb and CIDa == CIDb)
 				{
 					bFound=true;
 					m_AADT_Cell_list[i].dwDuration=GetNbytes(4,&m_pIFO[m_C_PBKT[j]+0x18*k+4]);
@@ -536,15 +551,15 @@ void CPgcDemuxApp::FillDurations()
 
 	for (i=0; i<iArraysize; i++)
 	{
-		VIDb=m_MADT_Cell_list[i].VID;
-		CIDb=m_MADT_Cell_list[i].CID;
+		auto VIDb = m_MADT_Cell_list[i].VID;
+		auto CIDb = m_MADT_Cell_list[i].CID;
 		for (j=0,bFound=false;j<m_nMPGCs && !bFound; j++)
 		{
 			for (k=0;k<m_nMCells[j];k++)
 			{
-				VIDa=GetNbytes(2,&m_pIFO[m_M_C_POST[j]+k*4]);
-				CIDa=m_pIFO[m_M_C_POST[j]+k*4+3];
-				if (VIDa==VIDb && CIDa==CIDb)
+				auto VIDa = Vid(GetNbytes(2,&m_pIFO[m_M_C_POST[j]+k*4]));
+				auto CIDa = Cid(m_pIFO[m_M_C_POST[j]+k*4+3]);
+				if (VIDa == VIDb and CIDa == CIDb)
 				{
 					bFound=true;
 					m_MADT_Cell_list[i].dwDuration=GetNbytes(4,&m_pIFO[m_M_C_PBKT[j]+0x18*k+4]);
@@ -613,7 +628,7 @@ int CPgcDemuxApp::ReadIFO()
         unsigned nVIDs;
 	ADT_CELL_LIST myADT_Cell;
 	ADT_VID_LIST myADT_Vid;
-	int nTotADT, nADT, VidADT,CidADT;
+	int nTotADT, nADT;
 	int iArraysize;
 	bool bAlready, bEndAngle;
 	FILE * in;
@@ -803,14 +818,14 @@ int CPgcDemuxApp::ReadIFO()
 //Cells
 	for (nADT=0; nADT <nTotADT; nADT++)
 	{
-		VidADT=GetNbytes(2,&m_pIFO[m_iVTS_C_ADT+8+12*nADT]);
-		CidADT=m_pIFO[m_iVTS_C_ADT+8+12*nADT+2];
+		auto VidADT = Vid(GetNbytes(2,&m_pIFO[m_iVTS_C_ADT+8+12*nADT]));
+		auto CidADT = Cid(m_pIFO[m_iVTS_C_ADT+8+12*nADT+2]);
 
 		iArraysize=m_AADT_Cell_list.size();
 		for (int k = 0, bAlready = false; k < iArraysize; k++)
 		{
-			if (CidADT==m_AADT_Cell_list[k].CID &&
-				VidADT==m_AADT_Cell_list[k].VID )
+			if (CidADT == m_AADT_Cell_list[k].CID and
+				VidADT == m_AADT_Cell_list[k].VID )
 			{
 				bAlready=true;
 				kk=k;
@@ -845,14 +860,14 @@ int CPgcDemuxApp::ReadIFO()
 // Cells
 	for (nADT=0; nADT <nTotADT; nADT++)
 	{
-		VidADT=GetNbytes(2,&m_pIFO[m_iVTSM_C_ADT+8+12*nADT]);
-		CidADT=m_pIFO[m_iVTSM_C_ADT+8+12*nADT+2];
+		auto VidADT = Vid(GetNbytes(2,&m_pIFO[m_iVTSM_C_ADT+8+12*nADT]));
+		auto CidADT = Cid(m_pIFO[m_iVTSM_C_ADT+8+12*nADT+2]);
 
 		iArraysize=m_MADT_Cell_list.size();
 		for (int k = 0, bAlready=false; k < iArraysize; k++)
 		{
-			if (CidADT==m_MADT_Cell_list[k].CID &&
-				VidADT==m_MADT_Cell_list[k].VID )
+			if (CidADT == m_MADT_Cell_list[k].CID and
+				VidADT == m_MADT_Cell_list[k].VID )
 			{
 				bAlready=true;
 				kk=k;
@@ -884,12 +899,12 @@ int CPgcDemuxApp::ReadIFO()
 	iArraysize=m_AADT_Cell_list.size();
 	for (i=0; i <iArraysize; i++)
 	{
-		VidADT=m_AADT_Cell_list[i].VID;
+		auto VidADT = m_AADT_Cell_list[i].VID;
 
 		nVIDs=m_AADT_Vid_list.size();
 		for (int k = 0, bAlready = false; k < int(nVIDs); k++)
 		{
-			if (VidADT==m_AADT_Vid_list[k].VID )
+			if (VidADT == m_AADT_Vid_list[k].VID)
 			{
 				bAlready=true;
 				kk=k;
@@ -916,12 +931,12 @@ int CPgcDemuxApp::ReadIFO()
 	iArraysize=m_MADT_Cell_list.size();
 	for (i=0; i <iArraysize; i++)
 	{
-		VidADT=m_MADT_Cell_list[i].VID;
+		auto VidADT = m_MADT_Cell_list[i].VID;
 
 		nVIDs=m_MADT_Vid_list.size();
 		for (int k = 0, bAlready = false; k < int(nVIDs); k++)
 		{
-			if (VidADT==m_MADT_Vid_list[k].VID )
+			if (VidADT == m_MADT_Vid_list[k].VID)
 			{
 				bAlready=true;
 				kk=k;
@@ -1175,8 +1190,6 @@ int CPgcDemuxApp::GetAudHeader(uchar* buffer)
 
 int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 {
-	int VID,CID;
-	unsigned k;
         int nCell;
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
@@ -1190,6 +1203,8 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 
 	IniDemuxGlobalVars();
 
+	Vid VID;
+	Cid CID;
 	if (iMode==PGCMODE)
 	{
 		if (nSelection >= m_nPGCs)
@@ -1197,9 +1212,9 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: GetAudioDelay: PGC does not exist");
 			return -1;
 		}
-		nCell=0;
-		VID=GetNbytes(2,&m_pIFO[m_C_POST[nSelection]+4*nCell]);
-		CID=m_pIFO[m_C_POST[nSelection]+3+4*nCell];
+		nCell = 0;
+		VID = Vid(GetNbytes(2,&m_pIFO[m_C_POST[nSelection]+4*nCell]));
+		CID = Cid(m_pIFO[m_C_POST[nSelection]+3+4*nCell]);
 	}
 	else if (iMode==VIDMODE)
 	{
@@ -1208,12 +1223,12 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: VID does not exist");
 			return -1;
 		}
-		VID=m_AADT_Vid_list[nSelection].VID;
-		CID=-1;
-		for (k=0;k<m_AADT_Cell_list.size() && CID==-1; k++)
+		VID = m_AADT_Vid_list[nSelection].VID;
+		CID = Cid(-1);
+		for (int k = 0; k < m_AADT_Cell_list.size() and CID == Cid(-1); k++)
 		{
-			if (VID==m_AADT_Cell_list[k].VID)
-				CID=m_AADT_Cell_list[k].CID;
+			if (VID == m_AADT_Cell_list[k].VID)
+				CID = m_AADT_Cell_list[k].CID;
 		}
 
 	}
@@ -1224,18 +1239,19 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: CID does not exist");
 			return -1;
 		}
-		VID=m_AADT_Cell_list[nSelection].VID;
-		CID=m_AADT_Cell_list[nSelection].CID;
+		VID = m_AADT_Cell_list[nSelection].VID;
+		CID = m_AADT_Cell_list[nSelection].CID;
 	}
 
-	for (k=0,nCell=-1; k < m_AADT_Cell_list.size() && nCell==-1; k++)
+	nCell = -1;
+	for (int k = 0; k < m_AADT_Cell_list.size() and nCell == -1; k++)
 	{
-		if (VID==m_AADT_Cell_list[k].VID &&
-			CID==m_AADT_Cell_list[k].CID)
-			nCell=k;
+		if (VID == m_AADT_Cell_list[k].VID and
+			CID == m_AADT_Cell_list[k].CID)
+			nCell = k;
 	}
 
-	if (nCell<0)
+	if (nCell < 0)
 	{
 		MyErrorBox("Error: VID/CID not found!.");
 		return -1;
@@ -1243,11 +1259,12 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 //
 // Now we have VID; CID; and the index in Cell Array "nCell".
 // So we are going to open the VOB and read the delays using ProcessPack(false)
-	i64IniSec=m_AADT_Cell_list[nCell].iIniSec;
-	i64EndSec=m_AADT_Cell_list[nCell].iEndSec;
+	i64IniSec = m_AADT_Cell_list[nCell].iIniSec;
+	i64EndSec = m_AADT_Cell_list[nCell].iEndSec;
 
-	iRet=0;
-	for (k=1,i64sectors=0;k<10;k++)
+	iRet = 0;
+	i64sectors = 0;
+	for (int k = 1; k < 10; k++)
 	{
 		i64sectors+=(m_i64VOBSize[k]/2048);
 		if (i64IniSec<i64sectors)
@@ -1295,12 +1312,12 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 			}
 			if ((iRet==0) && IsNav(m_buffer))
 			{
-				if (m_buffer[0x420]==(uchar)(VID%256) &&
-					m_buffer[0x41F]==(uchar)(VID/256) &&
-					m_buffer[0x422]==(uchar) CID)
-					bMyCell=true;
+				if (m_buffer[0x420] == uchar(int(VID) % 256) and
+					m_buffer[0x41F] == uchar(int(VID) / 256) and
+					m_buffer[0x422] == uchar(CID))
+					bMyCell = true;
 				else
-					bMyCell=false;
+					bMyCell = false;
 			}
 
 			if (iRet==0 && bMyCell)
@@ -1318,8 +1335,6 @@ int CPgcDemuxApp::GetAudioDelay(int iMode, int nSelection)
 
 int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 {
-	int VID,CID;
-	unsigned k;
         int nCell;
 	__int64 i64IniSec,i64EndSec;
 	string csAux,csAux2;
@@ -1330,6 +1345,8 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 
 	IniDemuxGlobalVars();
 
+	Vid VID;
+	Cid CID;
 	if (iMode==PGCMODE)
 	{
 		if (nSelection >= m_nMPGCs)
@@ -1337,9 +1354,9 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: GetMAudioDelay: PGC does not exist");
 			return -1;
 		}
-		nCell=0;
-		VID=GetNbytes(2,&m_pIFO[m_M_C_POST[nSelection]+4*nCell]);
-		CID=m_pIFO[m_M_C_POST[nSelection]+3+4*nCell];
+		nCell = 0;
+		VID = Vid(GetNbytes(2,&m_pIFO[m_M_C_POST[nSelection]+4*nCell]));
+		CID = Cid(m_pIFO[m_M_C_POST[nSelection]+3+4*nCell]);
 	}
 	else if (iMode==VIDMODE)
 	{
@@ -1348,12 +1365,12 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: VID does not exist");
 			return -1;
 		}
-		VID=m_MADT_Vid_list[nSelection].VID;
-		CID=-1;
-		for (k=0;k<m_MADT_Cell_list.size() && CID==-1; k++)
+		VID = m_MADT_Vid_list[nSelection].VID;
+		CID = Cid(-1);
+		for (int k = 0; k < m_MADT_Cell_list.size() && CID == Cid(-1); k++)
 		{
-			if (VID==m_MADT_Cell_list[k].VID)
-				CID=m_MADT_Cell_list[k].CID;
+			if (VID == m_MADT_Cell_list[k].VID)
+				CID = m_MADT_Cell_list[k].CID;
 		}
 
 	}
@@ -1364,18 +1381,19 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 			MyErrorBox("Error: CID does not exist");
 			return -1;
 		}
-		VID=m_MADT_Cell_list[nSelection].VID;
-		CID=m_MADT_Cell_list[nSelection].CID;
+		VID = m_MADT_Cell_list[nSelection].VID;
+		CID = m_MADT_Cell_list[nSelection].CID;
 	}
 
-	for (k=0,nCell=-1; k < m_MADT_Cell_list.size() && nCell==-1; k++)
+	nCell = -1;
+	for (int k = 0; k < m_MADT_Cell_list.size() and nCell == -1; k++)
 	{
-		if (VID==m_MADT_Cell_list[k].VID &&
-			CID==m_MADT_Cell_list[k].CID)
-			nCell=k;
+		if (VID == m_MADT_Cell_list[k].VID and
+			CID == m_MADT_Cell_list[k].CID)
+			nCell = k;
 	}
 
-	if (nCell<0)
+	if (nCell < 0)
 	{
 		MyErrorBox("Error: VID/CID not found!.");
 		return -1;
@@ -1424,12 +1442,12 @@ int CPgcDemuxApp::GetMAudioDelay(int iMode, int nSelection)
 			}
 			if ((iRet==0) && IsNav(m_buffer))
 			{
-				if (m_buffer[0x420]==(uchar)(VID%256) &&
-					m_buffer[0x41F]==(uchar)(VID/256) &&
-					m_buffer[0x422]==(uchar) CID)
-					bMyCell=true;
+				if (m_buffer[0x420] == uchar(int(VID) % 256) and
+					m_buffer[0x41F] == uchar(int(VID) / 256) and
+					m_buffer[0x422] == uchar(CID))
+					bMyCell = true;
 				else
-					bMyCell=false;
+					bMyCell = false;
 			}
 
 			if (iRet==0 && bMyCell)
@@ -1496,8 +1514,7 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 {
 	int nTotalSectors;
 	int nSector,nCell;
-	int k,iArraysize;
-	int CID,VID;
+	int iArraysize;
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
@@ -1527,8 +1544,8 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 	iArraysize=m_AADT_Cell_list.size();
 	for (nCell=nCurrAngle=0; nCell<m_nCells[nPGC]; nCell++)
 	{
-		VID=GetNbytes(2,&m_pIFO[m_C_POST[nPGC]+4*nCell]);
-		CID=m_pIFO[m_C_POST[nPGC]+3+4*nCell];
+		auto VID = Vid(GetNbytes(2,&m_pIFO[m_C_POST[nPGC]+4*nCell]));
+		auto CID = Cid(m_pIFO[m_C_POST[nPGC]+3+4*nCell]);
 
 		iCat=m_pIFO[m_C_PBKT[nPGC]+24*nCell];
 		iCat=iCat & 0xF0;
@@ -1539,12 +1556,12 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 			nCurrAngle++;
 		if (iCat==0 || (nAng+1) == nCurrAngle)
 		{
-			for (k=0; k< iArraysize ;k++)
+			for (int k = 0; k < iArraysize; k++)
 			{
-				if (CID==m_AADT_Cell_list[k].CID &&
-					VID==m_AADT_Cell_list[k].VID )
+				if (CID == m_AADT_Cell_list[k].CID and
+					VID == m_AADT_Cell_list[k].VID)
 				{
-					nTotalSectors+= m_AADT_Cell_list[k].iSize;
+					nTotalSectors += m_AADT_Cell_list[k].iSize;
 				}
 			}
 		}
@@ -1565,12 +1582,13 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 		if (iCat==0 || (nAng+1) == nCurrAngle)
 		{
 
-			VID=GetNbytes(2,&m_pIFO[m_C_POST[nPGC]+4*nCell]);
-			CID=m_pIFO[m_C_POST[nPGC]+3+4*nCell];
+			auto VID = Vid(GetNbytes(2,&m_pIFO[m_C_POST[nPGC]+4*nCell]));
+			auto CID = Cid(m_pIFO[m_C_POST[nPGC]+3+4*nCell]);
 
-			i64IniSec=GetNbytes(4,&m_pIFO[m_C_PBKT[nPGC]+nCell*24+8]);
-			i64EndSec=GetNbytes(4,&m_pIFO[m_C_PBKT[nPGC]+nCell*24+0x14]);
-			for (k=1,i64sectors=0;k<10;k++)
+			i64IniSec = GetNbytes(4,&m_pIFO[m_C_PBKT[nPGC]+nCell*24+8]);
+			i64EndSec = GetNbytes(4,&m_pIFO[m_C_PBKT[nPGC]+nCell*24+0x14]);
+			i64sectors = 0;
+			for (int k = 1; k < 10; k++)
 			{
 				i64sectors+=(m_i64VOBSize[k]/2048);
 				if (i64IniSec<i64sectors)
@@ -1622,12 +1640,12 @@ int CPgcDemuxApp::PgcDemux(int nPGC, int nAng)
 					}
 					if (IsNav(m_buffer))
 					{
-						if (m_buffer[0x420]==(uchar)(VID%256) &&
-							m_buffer[0x41F]==(uchar)(VID/256) &&
-							m_buffer[0x422]==(uchar) CID)
-							bMyCell=true;
+						if (m_buffer[0x420] == uchar(int(VID) % 256) and
+							m_buffer[0x41F] == uchar(int(VID) / 256) and
+							m_buffer[0x422] == uchar(CID))
+							bMyCell = true;
 						else
-							bMyCell=false;
+							bMyCell = false;
 					}
 
 					if (bMyCell)
@@ -1685,8 +1703,7 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 {
 	int nTotalSectors;
 	int nSector,nCell;
-	int k,iArraysize;
-	int CID,VID;
+	int iArraysize;
 	__int64 i64IniSec,i64EndSec;
 	string csAux,csAux2;
 	FILE *in,*fout;
@@ -1713,14 +1730,14 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 	iArraysize=m_MADT_Cell_list.size();
 	for (nCell=0; nCell<m_nMCells[nPGC]; nCell++)
 	{
-		VID=GetNbytes(2,&m_pIFO[m_M_C_POST[nPGC]+4*nCell]);
-		CID=m_pIFO[m_M_C_POST[nPGC]+3+4*nCell];
-		for (k=0; k< iArraysize ;k++)
+		auto VID = Vid(GetNbytes(2,&m_pIFO[m_M_C_POST[nPGC]+4*nCell]));
+		auto CID = Cid(m_pIFO[m_M_C_POST[nPGC]+3+4*nCell]);
+		for (int k = 0; k < iArraysize; k++)
 		{
-			if (CID==m_MADT_Cell_list[k].CID &&
-				VID==m_MADT_Cell_list[k].VID )
+			if (CID == m_MADT_Cell_list[k].CID and
+				VID == m_MADT_Cell_list[k].VID)
 			{
-				nTotalSectors+= m_MADT_Cell_list[k].iSize;
+				nTotalSectors += m_MADT_Cell_list[k].iSize;
 			}
 		}
 	}
@@ -1730,8 +1747,8 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 
 	for (nCell=0; nCell<m_nMCells[nPGC] && m_bInProcess==true; nCell++)
 	{
-		VID=GetNbytes(2,&m_pIFO[m_M_C_POST[nPGC]+4*nCell]);
-		CID=m_pIFO[m_M_C_POST[nPGC]+3+4*nCell];
+		auto VID = Vid(GetNbytes(2,&m_pIFO[m_M_C_POST[nPGC]+4*nCell]));
+		auto CID = Cid(m_pIFO[m_M_C_POST[nPGC]+3+4*nCell]);
 
 		i64IniSec=GetNbytes(4,&m_pIFO[m_M_C_PBKT[nPGC]+nCell*24+8]);
 		i64EndSec=GetNbytes(4,&m_pIFO[m_M_C_PBKT[nPGC]+nCell*24+0x14]);
@@ -1777,12 +1794,12 @@ int CPgcDemuxApp::PgcMDemux(int nPGC)
 				}
 				if (IsNav(m_buffer))
 				{
-					if (m_buffer[0x420]==(uchar)(VID%256) &&
-						m_buffer[0x41F]==(uchar)(VID/256) &&
-						m_buffer[0x422]== (uchar) CID)
-						bMyCell=true;
+					if (m_buffer[0x420] == uchar(int(VID) % 256) and
+						m_buffer[0x41F] == uchar(int(VID) / 256) and
+						m_buffer[0x422] == uchar(CID))
+						bMyCell = true;
 					else
-						bMyCell=false;
+						bMyCell = false;
 				}
 
 				if (bMyCell)
@@ -1829,8 +1846,7 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 {
 	int nTotalSectors;
 	int nSector,nCell;
-	int k,iArraysize;
-	int CID,VID,nDemuxedVID;
+	int iArraysize;
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
@@ -1858,19 +1874,20 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 	nTotalSectors= m_AADT_Vid_list[nVid].iSize;
 	nSector=0;
 	iRet=0;
-	nDemuxedVID=m_AADT_Vid_list[nVid].VID;
+	auto nDemuxedVID = m_AADT_Vid_list[nVid].VID;
 
 	iArraysize=m_AADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 	{
-		VID=m_AADT_Cell_list[nCell].VID;
-		CID=m_AADT_Cell_list[nCell].CID;
+		auto VID = m_AADT_Cell_list[nCell].VID;
+		auto CID = m_AADT_Cell_list[nCell].CID;
 
-		if (VID==nDemuxedVID)
+		if (VID == nDemuxedVID)
 		{
-			i64IniSec=m_AADT_Cell_list[nCell].iIniSec;
-			i64EndSec=m_AADT_Cell_list[nCell].iEndSec;
-			for (k=1,i64sectors=0;k<10;k++)
+			i64IniSec = m_AADT_Cell_list[nCell].iIniSec;
+			i64EndSec = m_AADT_Cell_list[nCell].iEndSec;
+			i64sectors = 0;
+			for (int k = 1; k < 10; k++)
 			{
 				i64sectors+=(m_i64VOBSize[k]/2048);
 				if (i64IniSec<i64sectors)
@@ -1920,12 +1937,12 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 					}
 					if (IsNav(m_buffer))
 					{
-						if (m_buffer[0x420]==(uchar)(VID%256) &&
-							m_buffer[0x41F]==(uchar)(VID/256) &&
-							m_buffer[0x422]==(uchar) CID)
-							bMyCell=true;
+						if (m_buffer[0x420] == uchar(int(VID) % 256) and
+							m_buffer[0x41F] == uchar(int(VID) / 256) and
+							m_buffer[0x422] == uchar(CID))
+							bMyCell = true;
 						else
-							bMyCell=false;
+							bMyCell = false;
 					}
 
 					if (bMyCell)
@@ -1954,16 +1971,16 @@ int CPgcDemuxApp::VIDDemux(int nVid)
 		iArraysize=m_AADT_Cell_list.size();
 		for (nCell=nLastCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
-			VID=m_AADT_Cell_list[nCell].VID;
-			if (VID==nDemuxedVID)
-				nLastCell=nCell;
+			auto VID = m_AADT_Cell_list[nCell].VID;
+			if (VID == nDemuxedVID)
+				nLastCell = nCell;
 		}
 
 		for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
-			VID=m_AADT_Cell_list[nCell].VID;
+			auto VID = m_AADT_Cell_list[nCell].VID;
 
-			if (VID==nDemuxedVID)
+			if (VID == nDemuxedVID)
 			{
 				nFrames+=DurationInFrames(m_AADT_Cell_list[nCell].dwDuration);
 				if (nCell!=nLastCell || m_bCheckEndTime )
@@ -1985,7 +2002,6 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 	int nTotalSectors;
 	int nSector,nCell;
 	int iArraysize;
-	int CID,VID,nDemuxedVID;
 	__int64 i64IniSec,i64EndSec;
 	string csAux,csAux2;
 	FILE *in, *fout;
@@ -2010,13 +2026,13 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 	nTotalSectors= m_MADT_Vid_list[nVid].iSize;
 	nSector=0;
 	iRet=0;
-	nDemuxedVID=m_MADT_Vid_list[nVid].VID;
+	auto nDemuxedVID = m_MADT_Vid_list[nVid].VID;
 
 	iArraysize=m_MADT_Cell_list.size();
 	for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 	{
-		VID=m_MADT_Cell_list[nCell].VID;
-		CID=m_MADT_Cell_list[nCell].CID;
+		auto VID = m_MADT_Cell_list[nCell].VID;
+		auto CID = m_MADT_Cell_list[nCell].CID;
 
 		if (VID==nDemuxedVID)
 		{
@@ -2063,12 +2079,12 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 					}
 					if (IsNav(m_buffer))
 					{
-						if (m_buffer[0x420]==(uchar)(VID%256) &&
-							m_buffer[0x41F]==(uchar)(VID/256) &&
-							m_buffer[0x422]== (uchar) CID)
-							bMyCell=true;
+						if (m_buffer[0x420] == uchar(int(VID) % 256) and
+							m_buffer[0x41F] == uchar(int(VID) / 256) and
+							m_buffer[0x422] == uchar(CID))
+							bMyCell = true;
 						else
-							bMyCell=false;
+							bMyCell = false;
 					}
 
 					if (bMyCell)
@@ -2098,16 +2114,16 @@ int CPgcDemuxApp::VIDMDemux(int nVid)
 
 		for (nCell=nLastCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
-			VID=m_MADT_Cell_list[nCell].VID;
-			if (VID==nDemuxedVID) nLastCell=nCell;
+			auto VID = m_MADT_Cell_list[nCell].VID;
+			if (VID == nDemuxedVID) nLastCell = nCell;
 		}
 
 
 		for (nCell=0; nCell<iArraysize && m_bInProcess==true; nCell++)
 		{
-			VID=m_MADT_Cell_list[nCell].VID;
+			auto VID = m_MADT_Cell_list[nCell].VID;
 
-			if (VID==nDemuxedVID)
+			if (VID == nDemuxedVID)
 			{
 				nFrames+=DurationInFrames(m_MADT_Cell_list[nCell].dwDuration);
 				if (nCell!=nLastCell || m_bCheckEndTime )
@@ -2131,8 +2147,6 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 {
 	int nTotalSectors;
 	int nSector;
-	int k;
-	int CID,VID;
 	__int64 i64IniSec,i64EndSec;
 	__int64 i64sectors;
 	int nVobin;
@@ -2160,12 +2174,13 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 	nSector=0;
 	iRet=0;
 
-	VID=m_AADT_Cell_list[nCell].VID;
-	CID=m_AADT_Cell_list[nCell].CID;
+	auto VID = m_AADT_Cell_list[nCell].VID;
+	auto CID = m_AADT_Cell_list[nCell].CID;
 
 	i64IniSec=m_AADT_Cell_list[nCell].iIniSec;
 	i64EndSec=m_AADT_Cell_list[nCell].iEndSec;
-	for (k=1,i64sectors=0;k<10;k++)
+	i64sectors = 0;
+	for (int k = 1; k < 10; k++)
 	{
 		i64sectors+=(m_i64VOBSize[k]/2048);
 		if (i64IniSec<i64sectors)
@@ -2217,9 +2232,9 @@ int CPgcDemuxApp::CIDDemux(int nCell)
 			}
 			if (IsNav(m_buffer))
 			{
-				if (m_buffer[0x420]==(uchar)(VID%256) &&
-					m_buffer[0x41F]==(uchar)(VID/256) &&
-					m_buffer[0x422]==(uchar) CID)
+				if (m_buffer[0x420] == uchar(int(VID) % 256) and
+					m_buffer[0x41F] == uchar(int(VID) / 256) and
+					m_buffer[0x422] == uchar(CID))
 					bMyCell=true;
 				else
 					bMyCell=false;
@@ -2260,7 +2275,6 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 {
 	int nTotalSectors;
 	int nSector;
-	int CID,VID;
 	__int64 i64IniSec,i64EndSec;
 	string csAux,csAux2;
 	FILE *in, *fout;
@@ -2285,8 +2299,8 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 	nSector=0;
 	iRet=0;
 
-	VID=m_MADT_Cell_list[nCell].VID;
-	CID=m_MADT_Cell_list[nCell].CID;
+	auto VID = m_MADT_Cell_list[nCell].VID;
+	auto CID = m_MADT_Cell_list[nCell].CID;
 
 	i64IniSec=m_MADT_Cell_list[nCell].iIniSec;
 	i64EndSec=m_MADT_Cell_list[nCell].iEndSec;
@@ -2330,9 +2344,9 @@ int CPgcDemuxApp::CIDMDemux(int nCell)
 			}
 			if (IsNav(m_buffer))
 			{
-				if (m_buffer[0x420]==(uchar)(VID%256) &&
-					m_buffer[0x41F]==(uchar)(VID/256) &&
-					m_buffer[0x422]== (uchar) CID)
+				if (m_buffer[0x420] == uchar(int(VID) % 256) and
+					m_buffer[0x41F] == uchar(int(VID) / 256) and
+					m_buffer[0x422] == uchar(CID))
 					bMyCell=true;
 				else
 					bMyCell=false;
@@ -2416,7 +2430,7 @@ void CPgcDemuxApp::OutputLog(int nItem, int nAng, int iDomain)
 	}
 	if (m_iMode==VIDMODE)
 	{
-		log << "Selected VOBID=" << (iDomain==TITLES ? m_AADT_Vid_list[nItem].VID : m_MADT_Vid_list[nItem].VID) << endl;
+		log << "Selected VOBID=" << (iDomain==TITLES ? int(m_AADT_Vid_list[nItem].VID) : int(m_MADT_Vid_list[nItem].VID)) << endl;
 		log << "Number of Cells in Selected VOB=" << (iDomain==TITLES ? m_AADT_Vid_list[nItem].nCells : m_MADT_Vid_list[nItem].nCells) << endl;
 		log << "Selected PGC=" << "None" << endl;
 		log << "Number of Cells in Selected PGC=" << "None" << endl;

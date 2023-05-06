@@ -44,9 +44,13 @@ typedef int64_t __int64;
 
 typedef unsigned char uchar;
 
+enum class Vid : int {};
+enum class Cid : int {};
+
 typedef struct ADT_CELL_LIST
 {
-    int VID,CID;
+    Vid VID;
+	Cid CID;
 	int iSize;
 	int iIniSec,iEndSec;
 	DWORD dwDuration;
@@ -54,7 +58,7 @@ typedef struct ADT_CELL_LIST
 
 typedef struct ADT_VID_LIST
 {
-    int VID;
+    Vid VID;
 	int iSize;
 	int nCells;
 	DWORD dwDuration;
@@ -70,8 +74,8 @@ class CPgcDemuxApp
 public:
 	CPgcDemuxApp();
 
-	uchar	* m_pIFO; 
-	uchar	m_buffer[2050]; 
+	uchar	* m_pIFO;
+	uchar	m_buffer[2050];
 
 	bool	m_bInProcess, m_bAbort, m_bCLI;
 	int		m_iRet, nResponse;
@@ -99,7 +103,8 @@ public:
 	int		m_iIFOlen;
 	int		m_nSelPGC;
 	int		m_nSelAng;
-	int		m_nVid,m_nCid;
+	Vid		m_nVid;
+	Cid		m_nCid;
 	int		m_iMode;
 	__int64	m_i64OutputLBA;
 	int		m_nVobout,m_nVidout,m_nCidout;
@@ -111,12 +116,12 @@ public:
 	bool	bNewCell;
 	int		m_nLastVid,m_nLastCid;
 
-        std::vector<ADT_CELL_LIST> m_AADT_Cell_list; 
-        std::vector<ADT_CELL_LIST> m_MADT_Cell_list; 
+        std::vector<ADT_CELL_LIST> m_AADT_Cell_list;
+        std::vector<ADT_CELL_LIST> m_MADT_Cell_list;
         std::vector<ADT_VID_LIST>	m_AADT_Vid_list;
         std::vector<ADT_VID_LIST>	m_MADT_Vid_list;
 
-	int		m_iVTS_PTT_SRPT,m_iVTS_PGCI,m_iVTS_C_ADT; 
+	int		m_iVTS_PTT_SRPT,m_iVTS_PGCI,m_iVTS_C_ADT;
     int		m_iVTS_VOBU_ADMAP,m_iVTS_TMAPTI;
 	int		m_iVTSM_PGCI,m_iVTSM_C_ADT,m_iVTSM_VOBU_ADMAP;
 	int		m_iVTS_PGC[MAX_PGC];

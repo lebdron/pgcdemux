@@ -7,7 +7,7 @@ typedef int64_t __int64;
 typedef uint32_t DWORD;
 #else /* _WIN32 */
 #include <windows.h>
-#endif /* _WIN32 */ 
+#endif /* _WIN32 */
 
 using namespace std;
 
@@ -34,7 +34,7 @@ int readpts(uchar *buf)
 }
 
 
-int GetNbytes(int nNumber,uchar* address)
+int GetNbytes(int nNumber,uchar const * address)
 {
 	int ret,i;
 
@@ -65,9 +65,9 @@ int DurationInFrames(DWORD dwDuration)
 
 	if ( ((dwDuration%256) & 0x0c0) == 0x0c0 )
 		ifps=30;
-	else  
+	else
 		ifps=25;
-	
+
 	i64Dur=  (BCD2Dec( (dwDuration%256) & 0x3f));
 	i64Dur+= (BCD2Dec( (dwDuration/256)%256 )*ifps);
 	i64Dur+= (BCD2Dec( (dwDuration/(256*256))%256 )*ifps*60);
@@ -86,9 +86,9 @@ DWORD AddDuration(DWORD dwDuration1, DWORD dwDuration2)
 
 	if ( ((dwDuration1%256) & 0x0c0) == 0x0c0 )
 		ifps=30;
-	else  
+	else
 		ifps=25;
-	
+
 	i64Dur1=  BCD2Dec( (dwDuration1%256) & 0x3f);
 	i64Dur1+= BCD2Dec( (dwDuration1/256)%256 )*ifps;
 	i64Dur1+= BCD2Dec( (dwDuration1/(256*256))%256 )*ifps*60;
@@ -197,10 +197,10 @@ SDSS   AC3   DTS   LPCM   MPEG-1   MPEG-2
  97    87    8F     A7     C7       D7
 --------------------------------------------------------------------------------
 */
-	if ((startcode==445 && buffer[st_i] >0x7f && buffer[st_i] < 0x98) || 
-	    (startcode==445 && buffer[st_i] >0x9f && buffer[st_i] < 0xa8) || 
+	if ((startcode==445 && buffer[st_i] >0x7f && buffer[st_i] < 0x98) ||
+	    (startcode==445 && buffer[st_i] >0x9f && buffer[st_i] < 0xa8) ||
 		(startcode>=0x1c0 && startcode<=0x1c7)  ||
-		(startcode>=0x1d0 && startcode<=0x1d7)  ) 
+		(startcode>=0x1d0 && startcode<=0x1d7)  )
 			return true;
 	else return false;
 
@@ -276,4 +276,3 @@ void ModifyLBA (uchar* buffer, __int64 m_i64OutputLBA)
 	buffer[0x040C]=buffer[0x2E];
 	buffer[0x040B]=buffer[0x2D];
 }
-

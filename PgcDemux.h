@@ -116,8 +116,9 @@ public:
 	bool	bNewCell;
 	int		m_nLastVid,m_nLastCid;
 
-        std::vector<ADT_CELL_LIST> m_AADT_Cell_list;
-        std::vector<ADT_CELL_LIST> m_MADT_Cell_list;
+	using CellList = std::vector<ADT_CELL_LIST>;
+	CellList m_AADT_Cell_list;
+	CellList m_MADT_Cell_list;
         std::vector<ADT_VID_LIST>	m_AADT_Vid_list;
         std::vector<ADT_VID_LIST>	m_MADT_Vid_list;
 
@@ -179,8 +180,6 @@ public:
 	virtual void FillDurations();
 	virtual void IniDemuxGlobalVars();
 	virtual int OpenVideoFile();
-	virtual int GetAudioDelay(int iMode, int nSelection);
-	virtual int GetMAudioDelay(int iMode, int nSelection);
 	virtual int GetAudHeader(uchar* buffer);
 
 
